@@ -1,0 +1,806 @@
+---
+title: "`flowCore`"
+subtitle: Basic Functions for Flow Cytometry Data
+output:
+  html_document:
+    number_sections: yes
+    theme: journal
+    toc: yes
+    toc_float: yes
+  word_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r libraries}
+library(flowCore)
+```
+
+```{r, eval = FALSE}
+browseVignettes("flowCore")
+```
+
+Find [here](https://www.bioconductor.org/packages/devel/bioc/vignettes/flowCore/inst/doc/HowTo-flowCore.pdf) a newr version of the vignette.
+
+This document summarizes the contents of the vignette and reproduces the proposed case studies.
+
+# Representing Flow Cytometry Data
+## The _flowFrame_ Class
+Corresponds with a single FCS file.  
+FCS file versions 2.0 through 3.0 are supported.
+
+### Data elements
+`flowFrame` is organized in **slots**:
+
+* `exprs`: Contains the event-level information, stored as a single matrix.
+  + Methods: `exprs()`, `exprs <-`
+* `parameters`: Contains the column metadata as an _AnnotatedDatatFrame_.
+  + Methods: `parameter()`, `names`, `featureNames`, `colnames`
+
+\newline
+
+* `keyword` method: **A method of `parameters`????**
+* `identifier` method
+  
+### Reading a flowFrame: `transformation` parameter
+* `read.FCS` function
+  + `transformation` parameter:
+    + Default: "linearize"
+    + “linearize- with-PnG-scaling”
+    + “scale” 
+
+#### No transformation
+```{r}
+file.name <- system.file("extdata", "0877408774.B08", package="flowCore")  # FILE
+x <- read.FCS(file.name, transformation = FALSE) # NO TRANSFORMATION
+summary(x)
+```
+
+"_As we can see, in this case the values from each parameter seem to run from 0 to 1023 (2^10^ − 1). However, inspection of the “exponentiation” keyword (\$PnE) reveals that some of the parameters (3 and 4) have been stored in a format specifying that the channel values should be scaled as $y=f_2 × 10^{f_1·x/R}$ where:
+
+* $x$ is the original channel value
+* $y$ is the scaled value
+* $f_1$ and $f_2$ are given respectively by the first and second element of the value of the $PnE key
+* R is the channel range given by the value of the $PnR key
+
+The special $PnE value of "0,0" corresponds to a scale that is already linear._"
+
+\$PnE seems to be represent a keyword stored in the x element. 
+The keywords can be shown with the commands: `keyword(x,)` or `x@description`.  
+
+n seems to indicate the number of the parameter, e.g., P2 would be SSC-H.  
+E seems to indicate that the keyword gives information about the format in which the parameters have been stored.
+
+```{r}
+keyword(x,c("$P1E", "$P2E", "$P3E", "$P4E", "$P5E", "$P6E", "$P7E", "$P8E"))
+```
+\ 
+
+#### Linearize
+Reading the fcs file with the default `transformation = "linearize"` option will convert all the parameters to the "0,0" (linear) format:
+```{r}
+summary(read.FCS(file.name, tra))
+```
+
+#### linearize-with-PnG-scaling
+"_The “linearize-with-PnG-scaling” option will perform the previous transformation and it will also apply a “division by gain” to pamameters stored on linear scale with specified gain. The gain is specified in the $PnG keywords. This option has been introduced as part of Gating-ML 2.0 compliance._"
+
+I do not really understand. Let's try:
+```{r}
+summary(read.FCS(file.name), transformation = "linearize-with-PnG-scaling")
+```
+
+It is the same:
+```{r}
+summary(read.FCS(file.name)) == summary(read.FCS(file.name), transformation = "linearize-with-PnG-scaling")
+```
+
+Here, no specific gain seems to be specified, so the result is the same than the obtained with "linearize". It does not seem to exist any $PnG keyword in the flofFrame:
+```{r, eval = FALSE}
+View(x@description)
+```
+
+#### Scale
+Values are scaled onto a [0,1] range:  
+```{r}
+summary(read.FCS(file.name,transformation="scale"))
+```
+
+### Reading a flowFrame: `alter.names` parameter
+```{r}
+x2 <- read.FCS(file.name,alter.names=TRUE)
+summary(x2)
+#View(x2@description)
+```
+
+It is supposed to simply rename the parameters replacing a "-" for a ".", but it also adds keywords (`r length(keyword(x2,))` _vs_ `r length(keyword(x,))`). (??)
+
+### Reading a flowFrame: `column.pattern` parameter
+(Must be applied after `alter.names` if it is used)  
+Only the parameters with the indicated regular expression will be included:
+```{r}
+(x3 <- read.FCS(file.name, column.pattern="-H"))
+```
+
+### Reading a flowFrame: `which.lines` parameter
+A specific sample of lines can be read:
+```{r}
+lines <- sample(100:500, 50)
+(x4 <- read.FCS(file.name, which.lines = lines))
+```
+
+The `flowFrame` object has now just 50 of the 10000 cells.  
+
+## The _flowSet_ Class
+### Creating a _flowSet_ (option 1)
+The `flowSet`objet organizes several `flowFrame` objects. 
+
+Reading several FCS files contained in the same directory:
+```{r}
+fcs.dir <- system.file("extdata", "compdata", "data", package="flowCore")
+fcs.dir
+```
+
+Lecture des 5 fichiers contenus dans fcs.dir:
+```{r}
+frames <- lapply(dir(fcs.dir, full.names=TRUE), read.FCS)
+```
+
+"frames" is now a large list containing 5 elements fcs. We put them onto a `flowSet` element:
+```{r}
+(fs1 <- as(frames, "flowSet"))
+summary(fs1)
+```
+
+The samples are not named:
+```{r}
+fs1@phenoData@data
+```
+
+```{r}
+sampleNames(fs1)
+```
+
+They are not even named in the large list:
+```{r}
+names(frames)
+```
+
+We can use the "SAMPLE ID" keyword (on the frames large list) to name the samples:
+```{r}
+# first, to name the elements of the large list:
+(names(frames) <- sapply(frames, keyword, "SAMPLE ID"))
+```
+
+We apply them to the `flowSet` element:
+```{r}
+fs1 <- as(frames, "flowSet")
+sampleNames(fs1)
+```
+
+### Working with experimental metadata
+"_The flowSet has an associated AnnotatedDataFrame that provides metadata not contained within the flowFrame objects themselves. This data frame is accessed and modified via the usual `phenoData` and `phenoData<-` methods_"
+
+```{r}
+pData(phenoData(fs1))
+```
+
+We can add the original filenames:
+```{r}
+phenoData(fs1)$Filename <- fsApply(fs1, keyword, "$FIL")
+pData(phenoData(fs1))
+# Does not apper correctly in the chunk execution but it does in the console 
+# Looks also fine when after knitting
+```
+
+Maybe we could also do it from the large list:
+```{r}
+(filenames <- sapply(frames, keyword, "FILENAME"))
+```
+
+Ah, no.  
+```{r}
+rm(frames, fs1)
+```
+
+### Creating a _flowSet_ (option 2): `read.flowSet`
+`read.flowSet` arguments:
+
+* alter.names
+* column.pattern
+* files
+* name.keyword
+* phenoData
+
+We create the `flowSet` directly, no need of any intermediate large list:
+```{r}
+fs <- read.flowSet(path = fcs.dir)
+```
+
+Or, if we want to include the SAMPLE ID and the original flienames as we had done in "option 1", simply:
+```{r}
+fs <- read.flowSet(path = fcs.dir,                                    # PATH
+                   name.keyword = "SAMPLE ID",                        # SAMPLE ID
+                   phenoData=list(name="SAMPLE ID", Filename="$FIL")) # original FILE NAMES
+fs
+```
+
+```{r}
+pData(phenoData(fs))
+```
+
+Much easier.
+
+### Manipulating a _flowSet_: `fsApply` method
+
+* `simplify`. Defaults to TRUE  
+If all the return values are _flowFrame_ objects, a new _flowSet_ object will be created.  
+* `use.exprs`. Defaults to FALSE: The return values are directly the expression matrix of each frame.
+* `each_row`, `each_col`
+
+Calculating the median of each parameter of each _flowFrame_:
+```{r}
+fsApply(fs, each_col, median) # use.exprs=T is "included" in each_row and each_col
+
+# or, equivalently:
+# fsApply(fs,function(x) apply(x, 2, median), use.exprs=TRUE)
+```
+
+# Visualizing Flow Cytometry data
+## Visualizing a _flowFrame_
+### Bivariate density plot:
+```{r, message=FALSE}
+library(ggcyto)
+autoplot(x3, "FL1-H", "FL2-H")
+```
+
+### Univariate densityplot:
+```{r}
+autoplot(x3, "FL1-H")
+```
+
+## Visualizing a _flowSet_
+```{r}
+fs <- read.flowSet(path = system.file("extdata", package = "flowCore"), 
+                   pattern = "\\.") # Why "\\."???
+autoplot(fs, "FL1-H", "FL2-H")
+```
+
+```{r}
+rm(x, x2, x3, x4, fs)
+```
+
+# Compensation
+## Extracting and applying a pre-calculated spillover matrix
+**`spillover` method**    
+If the FCS file contains a compensation matrix with the \$SPILLOVER or \$SPILL keywords:
+```{r}
+fcsfiles <- list.files(pattern = "CytoTrol", 
+                       system.file("extdata", package = "flowWorkspaceData"),
+                       full = TRUE)
+fs <- read.flowSet(fcsfiles)
+fs
+```
+
+```{r}
+x <- fs[[1]]
+(comp_list <- spillover(x))
+```
+\  
+The keyword $SPILL is the good one. So:
+```{r}
+comp <- comp_list[[1]]
+```
+
+**`compensate` method**  
+### Applying the spillover matrix to the channels of a _flowFrame_:
+```{r}
+x_comp <- compensate(x, comp)
+```
+
+Let's see the effects of the compensation:
+```{r}
+library(gridExtra)
+transList <- estimateLogicle(x, c("V450-A","V545-A"))
+p1 <- autoplot(transform(x, transList), "V450-A", "V545-A") +
+ggtitle("Before")
+p2 <- autoplot(transform(x_comp, transList), "V450-A", "V545-A") +
+ggtitle("After compensation")
+grid.arrange(as.ggplot(p1), as.ggplot(p2), ncol = 2)
+```
+
+### Applying the spillover matrix to the channels of a _flowSet_:
+```{r}
+comp <- fsApply(fs, function(x) spillover(x)[[1]], simplify = FALSE)
+# With simplify=FALSE, fsApply returns a list of named matrices
+fs_comp <- compensate(fs, comp)
+```
+
+## Computing a spillover matrix from a set of compensation controls (method 1)
+```{r}
+fcs.dir <- system.file("extdata", "compdata", "data", package="flowCore")
+frames <- lapply(dir(fcs.dir, full.names=TRUE), read.FCS)
+names(frames)
+```
+
+Assigning the channel name for each control file (an unstained sample and singly-stained samples):
+```{r}
+# names(frames) <- c("UNSTAINED", "FL1-H", "FL2-H", "FL4-H", "FL3-H")
+```
+
+BUT, how do I know in wich order introduce the control files?  
+Let's explore the frames list:  
+```{r}
+frames[[1]]
+```
+
+The first frame seems to be the unstained control.
+```{r}
+frames[[2]]
+```
+
+The second is FL1-H, on FITC.
+
+```{r}
+frames[[3]]
+```
+
+Third is FL2-H in PE.
+
+```{r}
+frames[[4]]
+```
+
+Fourth is FL4-H in APC.
+
+```{r}
+frames[[5]]
+```
+
+Fifth is FL3-H in 7AAD.
+
+```{r, eval = FALSE}
+frames[[6]]
+```
+
+And that's all. Now we can:
+```{r}
+names(frames) <- c("UNSTAINED", "FL1-H", "FL2-H", "FL4-H", "FL3-H")
+```
+
+Coercing the frames to a _flowSet_:
+```{r}
+(frames <- as(frames, "flowSet"))
+```
+
+```{r}
+sampleNames(frames)
+```
+
+The stains are not in order. Would they be, we should use the `stain_match = "ordered"` option when looking for the spillover matrix. Like this:
+```{r}
+(comp <- spillover(frames, unstained="UNSTAINED", patt = "-H",
+                   fsc = "FSC-H", ssc = "SSC-H",
+                   stain_match = "ordered"))
+```
+
+Instead, we use `stain_match = "regexpr"`:
+```{r}
+(comp <- spillover(frames, unstained="UNSTAINED", patt = "-H",
+                   fsc = "FSC-H", ssc = "SSC-H",
+                   stain_match = "regexpr"))
+```
+
+Something's wrong. The matrix should change. (See the [vignette](https://www.bioconductor.org/packages/devel/bioc/vignettes/flowCore/inst/doc/HowTo-flowCore.pdf), page 15).
+
+I DO NOT KNOW HOW TO SOLVE THAT. Let's modify the matrix to move on:
+```{r}
+comp_m <- rbind(comp[1:2,], comp[4,], comp[3,])
+dimnames(comp_m) <- dimnames(comp)
+comp_m
+```
+
+## Computing a spillover matrix from a set of compensation controls (method 2)
+There is another method to match channels to their corresponding compensation controls, the `spillover_match` method (let's see if it works better).
+"_This allows for the matching of control files to specific channels via a simple csv file_" Fine.
+```{r}
+(comp_match <- system.file("extdata", "compdata", "comp_match", package="flowCore"))
+```
+
+I'm not surprised. I have not found any "comp_match" in /Library/Frameworks/R.framework/Versions/3.5/Resources/library/flowCore/extdata/compdata
+
+Let's create it. But first, let's try to coerce the flowset including the filenames:
+```{r}
+rm(frames)
+fcs.dir <- system.file("extdata", "compdata", "data", package="flowCore")
+# instead of:
+# frames <- lapply(dir(fcs.dir, full.names=TRUE), read.FCS)
+# Let's try 
+fs <- read.flowSet(path = fcs.dir, # PATH
+                   name.keyword = "SAMPLE ID",                        # SAMPLE ID
+                   phenoData=list(name="SAMPLE ID", Filename="$FIL")) # FILENAME
+fs
+```
+
+```{r}
+sampleNames(fs)
+```
+
+We can change the names:
+```{r}
+sampleNames(fs) <- c("UNSTAINED", "FL1-H", "FL2-H", "FL4-H", "FL3-H")
+```
+
+Let's try to find the spillover matrix:
+```{r}
+(comp <- spillover(fs, unstained="UNSTAINED", patt = "-H",
+                  fsc = "FSC-H", ssc = "SSC-H",
+                  stain_match = "ordered"))
+```
+
+Oh! It was not the correct order. Let's do it again with "regexpr"
+```{r}
+(comp <- spillover(fs, unstained="UNSTAINED", patt = "-H",
+                  fsc = "FSC-H", ssc = "SSC-H",
+                  stain_match = "regexpr"))
+```
+
+Same problem again. Anyway, let's try to solve it.
+```{r}
+pData(phenoData(fs))
+```
+
+Couldn't this be our match file?
+```{r}
+write.csv(pData(phenoData(fs)), file = "comp_match", col.names = NA, row.names = FALSE)
+writeLines(readLines("comp_match"))
+```
+
+Let's try:
+```{r, eval = FALSE}
+matched_fs <- spillover_match(path=control_path,
+                              fsc = "FSC-H", ssc = "SSC-H",
+                              matchfile = "comp_match")
+```
+
+The function `spillover_match` does not exist.
+
+Maybe the best thing is to provide the compensation matrix ourselves. Or, at least, VERIFY.
+
+# Transformation
+## **Out-of-line** transformation method: `transform` function
+Plotting the first two parametrers on the log scale:
+```{r}
+autoplot(transform(fs[[1]], `FL1-H`=log(`FL1-H`), `FL2-H`=log(`FL2-H`)), "FL1-H","FL2-H")
+# The old parameters have been destroyed!
+# To create new parameters, just rename them:
+# autoplot(transform(fs[[1]], `log.FL1-H`=log(`FL1-H`), `log.FL2-H`=log(`FL2-H`)), "log.FL1-H","log.FL2-H")
+```
+
+## **Inline** transformation method
+* Developed primarily to support filtering features.
+* Strictly more limited than the out-of-line transformation method
+
+### Standard transforms
+For more details, see the [vignette](http://127.0.0.1:10263/library/flowCore/doc/HowTo-flowCore.pdf), pages 12-14.
+
+* `truncateTransform`
+* `scaleTransform`
+* `linearTransform`
+* `quadraticTransform`
+* `lnTransform`
+* `logTransform`
+* `biexponentialTransform`
+* `logicleTransform`
+* `arcsinhTransform`
+
+We first create a transform function:
+```{r}
+aTrans <- truncateTransform("truncate at 1", a=1)
+aTrans
+```
+
+Put it in a `transformList`:
+```{r}
+myTrans <- transformList('FL1-H', aTrans)
+myTrans
+```
+
+Apply the transformation:
+```{r}
+transform(fs, myTrans)
+```
+
+# Gating
+"_The definition of gates in flowCore follows the Gating Markup Language Candidate Recommendation Spidlen et al. (2008), thus any flowCore gating strategy can be reproduced by any other software that also adheres to the standard and vice versa._"
+
+## Standard gates and filters
+
+* \ **Geometric gates**:
+    + `rectangleGate`
+    + `polygonGate`
+    + `polytopeGate` (convex hull)
+    + `ellipsoidGate`
+  
+```{r}
+(rectGate <- rectangleGate(filterId="Fluorescence Region", "FL1-H"=c(0, 12), "FL2-H"=c(0, 12)))
+```
+
+* \ **Data-driven gates**:  
+Filters. Not usually found in flow cytometry software.
+    + `norm2Filter`: Modelling data distribution.  
+    Finds a region that most resembles a **bivariate Normal distribution**.
+    + `kmeansFilter`: Density estimation.  
+    Allows the specification of **multiple populations** based on a **one dimensional k-means clustering** operation.
+    
+## Count Statistics
+First, we apply a filter (in this case, the one we have just created). We will obtain a `filterResult` object:
+```{r}
+(result = filter(fs[[1]],rectGate))
+```
+    
+Obtaining count and proportion statistics:
+```{r}
+summary(result)
+summary(result)$n
+summary(result)$true
+summary(result)$p
+```
+
+Applying the `kmeansFilter` can return a list of summary lists (one per population):
+```{r}
+summary(filter(fs[[1]], kmeansFilter("FSC-H"=c("Low", "Medium", "High"), filterId="myKMeans")))
+```
+
+When a filter is applied to an entire _flowSet_, it returns a list of _filterResult_ objects:
+```{r}
+filter(fs, rectGate)
+```
+
+## Subsetting
+### `Subset` a _flowFrame_
+
+Before subsetting:
+```{r}
+fs[[1]]
+```
+
+```{r}
+autoplot(fs[[1]], "FSC-H", "SSC-H")
+```
+
+Using a `norm2Filter`:
+```{r}
+(morphGate <- norm2Filter("FSC-H", "SSC-H", filterId="MorphologyGate", scale=2))
+```
+
+```{r}
+(smaller <- Subset(fs, morphGate))
+```
+
+```{r}
+smaller[[1]]
+```
+
+```{r}
+autoplot(smaller[[1]], "FSC-H", "SSC-H")
+```
+
+## Splitting
+### `split` a _flowFrame_
+
+Using a `kmeansFilter`:
+```{r}
+(smaller_splitted <- split(smaller[[1]], kmeansFilter("FSC-H"=c("Low","Medium","High"), filterId="myKMeans")))
+```
+
+
+```{r}
+#library(gridExtra)
+transList <- estimateLogicle(x, c("V450-A","V545-A"))
+p1 <- autoplot(smaller_splitted$Low, "FSC-H", "SSC-H") + ggtitle("Smaller Low")
+p2 <- autoplot(smaller_splitted$Medium, "FSC-H", "SSC-H") + ggtitle("Smaller Medium")
+p3 <- autoplot(smaller_splitted$High, "FSC-H", "SSC-H") + ggtitle("Smaller High")
+grid.arrange(as.ggplot(p1), as.ggplot(p2), as.ggplot(p3), ncol = 3)
+```
+
+### `split` a _flowSet_
+```{r}
+split(smaller, kmeansFilter("FSC-H"=c("Low", "Medium", "High"), filterId="myKMeans"))
+```
+
+## Combining gates and filters
+ 
+* & : intersection
+* | : union
+* ! : complement
+
+```{r}
+rectGate & morphGate
+rectGate | morphGate
+!morphGate
+```
+
+* %&% or %subset% : subset operation
+
+```{r}
+summary(filter(smaller[[1]], rectGate %&% morphGate))
+```
+
+First calculates a subset based on the `morphGate` filter and then applies the `rectGate`.
+
+## Transformation filters
+Filter with respect to transformed parameters.  
+
+Construct a `transformList`:
+```{r}
+(tFilter <- transform("FL1-H"=log,"FL2-H"=log))
+```
+
+Construct a filter with respect to the transform:
+```{r}
+( rect2 <- rectangleGate(filterId = "Another Rect", "FL1-H" = c(1,2), "FL2-H" =c (2,3)) %on% tFilter )
+```
+
+Or apply the transform directly on a _flowFrame_ or _flowSet_:
+```{r}
+autoplot(tFilter %on% smaller[[1]], "FL1-H","FL2-H")
+```
+
+# `flowWorkspace`
+Uses two kind of classes to abstract work flows:
+
+* \ **_GatingSet_ class**  
+Can be handled thanks to `flowWorkspace` and `openCyto` frameworks.  
+_GatingSet_ objects are the basic container holding all the elements for user interaction.  
+
+* \ ** _GatingHierarchy_ class**  
+A _GatingSet_ object contains multiple _GatingHierarchy_ objects (one per sample), such as a _flowSet_ contains multiple _flowFrames_.
+
+## Creating _GatingSet_ objects
+The flow data must be loaded as a _flowSet_ or _ncdfFlowSet_ (see the `ncdfFlow` package):
+```{r}
+fcsfiles <- list.files(pattern = "CytoTrol",
+                       system.file("extdata", package = "flowWorkspaceData"),
+                       full = TRUE)
+fs <- read.flowSet(fcsfiles)
+```
+
+Create the _GatingSet_:
+```{r}
+library(flowWorkspace)
+# BiocManager::install("flowWorkspaceData", version = "3.8")
+(gs <- GatingSet(fs))
+```
+
+We will use a user-supplied compensation matrix to compensate the data.
+```{r}
+spillover(fs[[1]])
+```
+
+```{r}
+(comp <- spillover(fs[[1]])[[1]])
+```
+
+Apply the compensation:
+```{r}
+( gs <- compensate(gs, comp) )
+```
+
+Turning it into a FlowSet:
+```{r}
+( fs_comp <- getData(gs) )
+```
+
+"_We can query the available nodes in the GatingSet using the getNodes method:_"  
+```{r}
+getNodes(gs)
+```
+
+"_It shows the only node “root” which corresponds to the raw flow data just added._"  
+
+## Transforming a _GatingSet_ object
+
+Build a transformer:
+```{r}
+( biexpTrans <- flowJo_biexp_trans(channelRange=4096, maxValue=262144 , pos=4.5,neg=0, widthBasis=-10) )
+```
+
+```{r, eval = FALSE}
+( chnls <- parameters(comp) )
+```
+
+It seems that we should have a "compensation object" (see [vignette](https://www.bioconductor.org/packages/devel/bioc/vignettes/flowCore/inst/doc/HowTo-flowCore.pdf), page 28), instead of a matrix.
+
+Getting the channels:
+```{r}
+( comp_obj <- compensation(comp) )
+```
+
+Ok.
+
+```{r}
+( chnls <- parameters(comp_obj) )
+```
+
+Generate a `transformerList`:
+```{r}
+tf <- transformerList(chnls, biexpTrans)
+```
+
+Apply the transformation on the _GatingSet_ object:
+```{r}
+( gs <- transform(gs, tf) )
+```
+**"_Note that we did assign the return value of transform back to gs. This is because the flow data is stored as an R object and thus transforming the data still follows the pass-by-value semantics._"**  
+
+Remember: we had just compensated a _GatingSet_ and turned it into a _FlowSet_ (fs_comp).
+
+Now we have transformed a  _GatingSet_ object. We are going to put it on a _FlowSet_ just to plot it with `flowData()`. (**What's the difference between `flowData()` and `getData()` ???**)
+```{r}
+# USing flowData()
+p1 <- autoplot(fs_comp[[1]], "B710-A") + ggtitle("raw")
+p2 <- autoplot(flowData(gs)[[1]], "B710-A") + 
+  ggtitle("trans") + 
+  ggcyto_par_set(limits = "instrument")
+
+grid.arrange(as.ggplot(p1), as.ggplot(p2), ncol = 2)
+```
+
+```{r}
+# Using getData()
+p1 <- autoplot(fs_comp[[1]], "B710-A") + ggtitle("raw")
+p2 <- autoplot(getData(gs)[[1]], "B710-A") + 
+  ggtitle("trans") + 
+  ggcyto_par_set(limits = "instrument")
+
+grid.arrange(as.ggplot(p1), as.ggplot(p2), ncol = 2)
+```
+
+## Add the gates
+Adding `flowCore` filters to a `GatingSet`:
+```{r}
+( rg1 <- rectangleGate("FSC-A"=c(50000, Inf), filterId="NonDebris") )
+```
+
+```{r}
+add(gs, rg1, parent = "root")
+getNodes(gs)
+```
+
+Gate the data:
+```{r}
+recompute(gs)
+```
+
+_As we see, here we don’t need to assign GatingSet back because all the modifications are made in place to the external pointer rather than the R object itself. And now there is one new population node under the “root” node called “NonDebris”. The node is named after the filterId of the gate if not explictly supplied. After the gates are added, the actual gating process is done by explictly calling the recompute method._  
+
+### Visualization
+```{r}
+autoplot(gs, "NonDebris")
+```
+
+```{r}
+ggcyto(gs, aes(x = `FSC-A`)) + 
+  geom_density() + 
+  geom_gate("NonDebris")
+```
+
+### Statistics
+```{r}
+# Counts:
+getTotal(gs[[1]], "NonDebris")
+
+# Proportion
+getProp(gs[[1]], "NonDebris")
+```
+
+## Adding more gates:
+
+
+
+
+
+
