@@ -1,0 +1,107 @@
+---
+title: "POP generator"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Parameters
+```{r INFO}
+# MFI values for NEG and POS cells
+neg_mean <- 25000
+neg_sd <- 20000
+pos_mean <- 225000
+pos_sd <- 20000
+
+# markers
+markers <- c("CD3", "CD4", "CD8", "CD56", "CD19")
+
+# cell types
+cells <- c("B", "NK", "T4", "T8", "NKT")
+
+# number of cells per cell type
+ns <- c(1000, 1000, 1000, 1000, 1000)
+
+# phenotypes
+b <- c("-", "-", "-", "-", "+")
+nk <- c("-", "-", "-", "+", "-")
+t4 <- c("+", "+", "-", "-", "-")
+t8 <- c("+", "-", "+", "-", "-")
+nkt <- c("+", "+", "-", "+", "-")
+pheno <- as.data.frame(matrix(c(b, nk, t4, t8, nkt),
+                              nrow = length(markers), byrow = TRUE,
+                              dimnames = list(cells, markers)))
+pheno
+```
+
+```{r}
+# total number of cells
+n <- sum(ns)
+
+# creating the dataframe
+set.seed(1239)
+for(i in (1:length(cells))){
+  c <- rep(i, ns[i])              # if I put directly the name of the cells, then the other values
+  for(j in (1:length(markers))){  # will be considered as factors instead of numeric
+    if(pheno[i,j] == "-"){
+      p <- rnorm(ns[i], mean = neg_mean, sd = neg_sd)
+    }else{
+      p <- rnorm(ns[i], mean = pos_mean, sd = pos_sd)
+    }
+     c <- cbind(c, p)
+  }
+  if(i==1){
+    pop <- c
+  }else{
+    pop <- rbind(pop, c)
+  }
+}
+
+pop <- as.data.frame(pop)
+names(pop) <- c("cells", markers)
+
+for(i in (1:length(cells))){
+  pop[pop$cells == i,1] <- cells[i]
+}
+
+pop$cells <- factor(pop$cells, levels = cells)
+head(pop)
+```
+
+```{r}
+#par(mfrow = c(ceiling(length(markers)/2), 2))
+for(i in 1:length(markers)){
+  boxplot(pop[,i+1] ~ pop$cells, xlab = markers[i])
+}
+```
+
+```{r}
+plot(pop[,2:length(markers)])
+```
+
+# Conversion to `FlowFrame` class objects
+```{r}
+library(flowCore)
+
+ff_norm <- new("flowFrame", exprs = as.matrix(pop[,-1])) 
+```
+
+```{r}
+library(ggcyto)
+autoplot(ff_norm, markers[1], markers[2])
+```
+
+```{r}
+autoplot(ff_norm, markers[3])
+```
+
+# Export to .fcs
+```{r}
+write.FCS(ff_norm, paste("ff_norm_", Sys.Date(), ".FCS", sep = ""))
+```
+
+
+
+
