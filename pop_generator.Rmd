@@ -99,7 +99,7 @@ autoplot(ff_norm, markers[3])
 
 # Export to .fcs
 ```{r}
-write.FCS(ff_norm, paste("ff_norm_", Sys.Date(), ".FCS", sep = ""))
+write.FCS(ff_norm, paste("ff_norm_", Sys.Date(), ".fcs", sep = ""))
 ```
 
 
