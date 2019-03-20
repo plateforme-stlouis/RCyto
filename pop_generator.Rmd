@@ -1,6 +1,9 @@
 ---
 title: "POP generator"
 output: html_document
+params:
+  pop_number: "01"
+  dir: "test_01"
 ---
 
 ```{r setup, include=FALSE}
@@ -15,24 +18,24 @@ neg_sd <- 20000
 pos_mean <- 225000
 pos_sd <- 20000
 
-# markers
-markers <- c("CD3", "CD4", "CD8", "CD56", "CD19")
+# phenotypes
+B <-   c("CD3" = "low",  "CD4" = "low",  "CD8" = "low",  "CD56" = "low",  "CD19" = "high")
+NK <-  c("CD3" = "low",  "CD4" = "low",  "CD8" = "low",  "CD56" = "high", "CD19" = "low")
+T4 <-  c("CD3" = "high", "CD4" = "high", "CD8" = "low",  "CD56" = "low",  "CD19" = "low")
+T8 <-  c("CD3" = "high", "CD4" = "low",  "CD8" = "high", "CD56" = "low",  "CD19" = "low")
+NKT <- c("CD3" = "high", "CD4" = "high", "CD8" = "low",  "CD56" = "high", "CD19" = "low")
 
-# cell types
-cells <- c("B", "NK", "T4", "T8", "NKT")
+pheno <- as.data.frame(rbind(B, NK, T4, T8, NKT))
 
 # number of cells per cell type
-ns <- c(1000, 1000, 1000, 1000, 1000)
+ns <- c("B" = 1000, "NK" = 1000, "T4" = 1000, "T8" = 1000, "NKT" = 1000)
 
-# phenotypes
-b <- c("-", "-", "-", "-", "+")
-nk <- c("-", "-", "-", "+", "-")
-t4 <- c("+", "+", "-", "-", "-")
-t8 <- c("+", "-", "+", "-", "-")
-nkt <- c("+", "+", "-", "+", "-")
-pheno <- as.data.frame(matrix(c(b, nk, t4, t8, nkt),
-                              nrow = length(markers), byrow = TRUE,
-                              dimnames = list(cells, markers)))
+# cell types
+cells <- rownames(pheno)
+
+# markers
+markers <- colnames(pheno)
+
 pheno
 ```
 
@@ -45,7 +48,7 @@ set.seed(1239)
 for(i in (1:length(cells))){
   c <- rep(i, ns[i])              # if I put directly the name of the cells, then the other values
   for(j in (1:length(markers))){  # will be considered as factors instead of numeric
-    if(pheno[i,j] == "-"){
+    if(pheno[i,j] == "low"){
       p <- rnorm(ns[i], mean = neg_mean, sd = neg_sd)
     }else{
       p <- rnorm(ns[i], mean = pos_mean, sd = pos_sd)
@@ -85,21 +88,23 @@ plot(pop[,2:length(markers)])
 ```{r}
 library(flowCore)
 
-ff_norm <- new("flowFrame", exprs = as.matrix(pop[,-1])) 
+ff <- new("flowFrame", exprs = as.matrix(pop[,-1])) 
 ```
 
 ```{r}
 library(ggcyto)
-autoplot(ff_norm, markers[1], markers[2])
+autoplot(ff, markers[1], markers[2])
 ```
 
 ```{r}
-autoplot(ff_norm, markers[3])
+autoplot(ff, markers[3])
 ```
 
 # Export to .fcs
 ```{r}
-write.FCS(ff_norm, paste("ff_norm_", Sys.Date(), ".fcs", sep = ""))
+write.FCS(ff, 
+          file.path(params$dir,
+            paste("ff_", params$pop_number, "_", Sys.Date(), ".fcs", sep = "")))
 ```
 
 
