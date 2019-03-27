@@ -2,8 +2,8 @@
 title: "POP generator"
 output: html_document
 params:
-  pop_number: "01"
-  dir: "test_01"
+  pop_number: "02"
+  dir: "test_02"
 ---
 
 ```{r setup, include=FALSE}
@@ -13,22 +13,57 @@ knitr::opts_chunk$set(echo = TRUE)
 # Parameters
 ```{r INFO}
 # MFI values for NEG and POS cells
-neg_mean <- 25000
-neg_sd <- 20000
-pos_mean <- 225000
-pos_sd <- 20000
+neg_mean <- 50
+neg_sd <- 500
+pos_mean <- 5000
+pos_sd <- 500
 
-# phenotypes
-B <-   c("CD3" = "low",  "CD4" = "low",  "CD8" = "low",  "CD56" = "low",  "CD19" = "high")
-NK <-  c("CD3" = "low",  "CD4" = "low",  "CD8" = "low",  "CD56" = "high", "CD19" = "low")
-T4 <-  c("CD3" = "high", "CD4" = "high", "CD8" = "low",  "CD56" = "low",  "CD19" = "low")
-T8 <-  c("CD3" = "high", "CD4" = "low",  "CD8" = "high", "CD56" = "low",  "CD19" = "low")
-NKT <- c("CD3" = "high", "CD4" = "high", "CD8" = "low",  "CD56" = "high", "CD19" = "low")
+# phenotypes OF INTEREST
+B <-      c("CD3" = "low",  "CD4" = "low",  "CD8" = "low",  "CD56" = "low",  "CD19" = "high")
+NK <-     c("CD3" = "low",  "CD4" = "low",  "CD8" = "low",  "CD56" = "high", "CD19" = "low")
+T4 <-     c("CD3" = "high", "CD4" = "high", "CD8" = "low",  "CD56" = "low",  "CD19" = "low")
+T8 <-     c("CD3" = "high", "CD4" = "low",  "CD8" = "high", "CD56" = "low",  "CD19" = "low")
+NKT_NN <- c("CD3" = "high", "CD4" = "low",  "CD8" = "low",  "CD56" = "high", "CD19" = "low")
+NKT_4 <-  c("CD3" = "high", "CD4" = "high", "CD8" = "low",  "CD56" = "high", "CD19" = "low")
+NKT_8 <-  c("CD3" = "high", "CD4" = "low",  "CD8" = "high", "CD56" = "high", "CD19" = "low")
 
-pheno <- as.data.frame(rbind(B, NK, T4, T8, NKT))
+pheno <- as.data.frame(rbind(B, NK, T4, T8, NKT_NN, NKT_4, NKT_8))
+
+# Save the pheno table (cell types of INTEREST) object to a file
+saveRDS(pheno, 
+        file.path(params$dir, paste("pheno", params$pop_number, Sys.Date(), sep = "_")))
+
+# UNKNOWN CELLS
+U1 <- c("CD3" = "low",  "CD4" = "low",  "CD8" = "low", "CD56" = "low", "CD19" = "low")
+U2 <- c("CD3" = "low",  "CD4" = "high", "CD8" = "low", "CD56" = "low", "CD19" = "low")
+U3 <- c("CD3" = "high", "CD4" = "low",  "CD8" = "low", "CD56" = "low", "CD19" = "low")
+U4 <- c("CD3" = "high", "CD4" = "low",  "CD8" = "low", "CD56" = "low", "CD19" = "high")
+
+# Add the unknown pops to the pheno table
+pheno <- (rbind(pheno, 
+                as.data.frame(rbind(U1, U2, U3, U4))
+                )
+          )
+
+# PERCENTAGE OF CELLS PER CELL TYPE
+# Let it be the same for all cell types:
+p <- 100/nrow(pheno)
+
+# or specify it here:
+pc <- c("B" = p, "NK" = p, "T4" = p, "T8" = p, "NKT_NN" = p, "NKT_4" = p, "NKT_8" = p, 
+        "U1" = p, "U2" = p, "U3" = p, "U4" = p)
+
+# total number of cells
+n <- 10000
 
 # number of cells per cell type
-ns <- c("B" = 1000, "NK" = 1000, "T4" = 1000, "T8" = 1000, "NKT" = 1000)
+ns <- c()
+for(i in 1:length(pc)){
+  ns[i] <- round(n*pc[[i]]/100)
+}
+
+# final number of cells
+n <- sum(ns)
 
 # cell types
 cells <- rownames(pheno)
@@ -40,36 +75,43 @@ pheno
 ```
 
 ```{r}
-# total number of cells
-n <- sum(ns)
-
 # creating the dataframe
 set.seed(1239)
-for(i in (1:length(cells))){
-  c <- rep(i, ns[i])              # if I put directly the name of the cells, then the other values
-  for(j in (1:length(markers))){  # will be considered as factors instead of numeric
+for(i in (1:length(cells))){      # i takes values [1, number of CELL TYPES]
+  # For cell type i, repeat the number i as many times as the number of cells of this cell type
+  # Later, the number will be replaced by the name of the cell type
+  # This is to avoid converting the numeric values into factors when cbind()ing colums with strings
+  c <- rep(i, ns[i]) 
+  # One column will be created for every marker with intensity values
+  for(j in (1:length(markers))){  
     if(pheno[i,j] == "low"){
-      p <- rnorm(ns[i], mean = neg_mean, sd = neg_sd)
+      p <- rnorm(ns[[i]], mean = neg_mean, sd = neg_sd)
     }else{
-      p <- rnorm(ns[i], mean = pos_mean, sd = pos_sd)
+      p <- rnorm(ns[[i]], mean = pos_mean, sd = pos_sd)
     }
+     # all the columns (one per marker) are joined:
      c <- cbind(c, p)
   }
   if(i==1){
+    # Values for the first cell type start to fill the dataframe "pop"
     pop <- c
   }else{
+    # Values for the other cell types are joined to "pop"
     pop <- rbind(pop, c)
   }
 }
 
+# Convert it to a dataframe and name the variables:
 pop <- as.data.frame(pop)
 names(pop) <- c("cells", markers)
 
+# Replace the numbers indicating the cell types by the corresponding names
 for(i in (1:length(cells))){
   pop[pop$cells == i,1] <- cells[i]
 }
-
+# and factorize the names:
 pop$cells <- factor(pop$cells, levels = cells)
+
 head(pop)
 ```
 
@@ -81,7 +123,7 @@ for(i in 1:length(markers)){
 ```
 
 ```{r}
-plot(pop[,2:length(markers)])
+plot(pop[,2:(length(markers)+1)])
 ```
 
 # Conversion to `FlowFrame` class objects
@@ -97,11 +139,11 @@ autoplot(ff, markers[1], markers[2])
 ```
 
 ```{r}
-autoplot(ff, markers[3])
+autoplot(ff, markers[5])
 ```
 
 # Export to .fcs
-```{r}
+```{r, eval = FALSE}
 write.FCS(ff, 
           file.path(params$dir,
             paste("ff_", params$pop_number, "_", Sys.Date(), ".fcs", sep = "")))
