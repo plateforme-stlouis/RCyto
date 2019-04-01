@@ -78,10 +78,8 @@ pheno
 # creating the dataframe
 set.seed(1239)
 for(i in (1:length(cells))){      # i takes values [1, number of CELL TYPES]
-  # For cell type i, repeat the number i as many times as the number of cells of this cell type
-  # Later, the number will be replaced by the name of the cell type
-  # This is to avoid converting the numeric values into factors when cbind()ing colums with strings
-  c <- rep(i, ns[i]) 
+  # For cell type i, repeat its name as many times as the number of cells 
+  c <- rep(cells[i], ns[i]) 
   # One column will be created for every marker with intensity values
   for(j in (1:length(markers))){  
     if(pheno[i,j] == "low"){
@@ -90,7 +88,8 @@ for(i in (1:length(cells))){      # i takes values [1, number of CELL TYPES]
       p <- rnorm(ns[[i]], mean = pos_mean, sd = pos_sd)
     }
      # all the columns (one per marker) are joined:
-     c <- cbind(c, p)
+    # convert the "c" list as data frame to preserve numeric "p" values after cbind-ing
+     c <- cbind(as.data.frame(c), p)  
   }
   if(i==1){
     # Values for the first cell type start to fill the dataframe "pop"
@@ -101,16 +100,12 @@ for(i in (1:length(cells))){      # i takes values [1, number of CELL TYPES]
   }
 }
 
-# Convert it to a dataframe and name the variables:
-pop <- as.data.frame(pop)
+# Name the variables:
 names(pop) <- c("cells", markers)
 
-# Replace the numbers indicating the cell types by the corresponding names
-for(i in (1:length(cells))){
-  pop[pop$cells == i,1] <- cells[i]
-}
-# and factorize the names:
-pop$cells <- factor(pop$cells, levels = cells)
+# Save the column with the cell labels to a file
+saveRDS(pop$cells, 
+        file.path(params$dir, paste("labels", params$pop_number, Sys.Date(), sep = "_")))
 
 head(pop)
 ```
