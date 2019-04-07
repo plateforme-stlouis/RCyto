@@ -1,0 +1,145 @@
+---
+title: "RPhenograph - pop 02"
+output:
+  html_document:
+    number_sections: yes
+    theme: journal
+    toc: yes
+    toc_float: yes
+author: Anna Guadall
+params:
+  file: "ff_02_2019-04-01.fcs"
+  pheno: "pheno_02_2019-04-01"
+  labels: "labels_02_2019-04-01"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Rphenograph is included in the package cytofkit. It can also be downloaded from the JinmiaoChenLab at GitHub.
+
+# Reading the data
+```{r}
+ff <- flowCore::read.FCS(params$file)
+
+# Import the labels
+labels <- readRDS(params$labels)
+
+# number of populations
+c <- length(levels(labels))
+```
+
+```{r}
+# expression matrix is in ff@exprs
+dim(ff@exprs)
+```
+
+```{r}
+is.matrix(ff@exprs)
+```
+
+# RphenoGraph partitioning
+```{r}
+library(cytofkit)
+rphe <- Rphenograph(ff@exprs) # default k = 30 nearest neighbours
+```
+
+```{r}
+print(rphe)
+```
+
+```{r}
+length(rphe)
+```
+
+The algorithm has found 11 groups. Great!
+
+```{r}
+# returns a numeric vector, one number for each vertex in the graph that was the input of the community detection
+rphe$membership
+```
+
+Group numbers have been given consecutively.
+
+```{r}
+# returns a numeric scalar
+rphe$modularity
+# ????
+```
+
+```{r}
+# returns a character scalar
+rphe$algorithm
+```
+
+```{r}
+table(rphe$membership)
+```
+
+Just perfect. But let's verify it anyway.  
+
+# Evaluating the performance
+
+Matching the labels with the predictions:
+
+```{r}
+#cells <- as.data.frame(cbind(cells = seq(1, length(labels), 1), mc_cell, labels))
+cells <- cbind(as.data.frame(labels), pred = rphe$membership)
+head(cells)
+```
+
+```{r, message=FALSE}
+(t <- table(cells$pred, cells$labels))
+```
+
+Finding the maximum number of each cell type (columns) on each cluster (rows):
+```{r}
+(m <- apply(t, 2, which.max))
+```
+
+Replacing the numbers of the clusters by the names of the cell types:
+```{r}
+# on the cell metaclustering
+for(i in 1:length(cells$pred)){
+  for(j in 1:c){
+    if(cells$pred[i] == m[[j]]){
+      cells$pred[i] <- levels(labels)[j] 
+    }
+  }
+}
+
+table(cells$pred, cells$labels)
+```
+
+This is the confusion matrix.
+
+Computing the confusion matrix and other performance measurements:
+```{r}
+library(caret)
+cells$pred <- factor(cells$pred, levels = levels(labels))
+(cm <- confusionMatrix(data = cells$pred, reference = labels))
+```
+
+```{r}
+cm$byClass
+```
+
+
+```{r}
+dades <- cbind(as.data.frame(ff@exprs), cells$labels, cells$pred)
+ggplot(dades, aes(x = CD3, y = CD19, col = labels, shape = cells$pred))  + 
+  geom_point(size = 3) + scale_shape_manual(values = c(0:10)) +
+  theme(legend.position = "bottom")
+```
+
+```{r}
+ggplot(dades, aes(x = CD8, y = CD56, col = labels, shape = cells$pred))  + 
+  geom_point(size = 3) + scale_shape_manual(values = c(0:10)) +
+  theme(legend.position = "bottom")
+```
+
+
+
+
+
