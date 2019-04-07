@@ -1,0 +1,397 @@
+---
+title: "test flowSOM - synthetic sample"
+output:
+  html_document:
+    number_sections: yes
+    theme: journal
+    toc: yes
+    toc_float: yes
+author: Anna Guadall
+params:
+  file: "ff_02_2019-04-01.fcs"
+  pheno: "pheno_02_2019-04-01"
+  labels: "labels_02_2019-04-01"
+  seed: 23
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Reading the data
+```{r}
+# import the fcs file
+#ff <- flowCore::read.FCS(params$file)
+
+# Import the labels
+labels <- readRDS(params$labels)
+
+# number of populations
+c <- length(levels(labels))
+```
+
+# The easy way (reading and clustering)
+Creating a large list from an FCS file with the wrapper `FlowSOM`  
+No scaling:
+```{r}
+#library(flowCore)
+#fframe <- read.FCS(params$file, transformation = F)
+
+library(FlowSOM)
+fs <- FlowSOM(params$file,
+                # Input options:
+                compensate = F,transform = F,
+                scale = F,
+                # SOM options:
+                colsToUse = colnames(params$file), 
+                #xdim = 7, ydim = 7, # determines the number of nodes and dimensions of the grid
+                # Metaclustering options:
+                nClus = 11,
+                # Seed for reproducible results:
+                seed = params$seed)
+
+PlotStars(fs$FlowSOM, backgroundValues = as.factor(fs$metaclustering))
+```
+
+```{r}
+PlotStars(fs$FlowSOM, backgroundValues = as.factor(fs$metaclustering), view = "grid")
+```
+
+# Step by step
+## Reading the data
+```{r}
+ff <- suppressWarnings(flowCore::read.FCS(params$file))
+ff
+```
+
+```{r}
+fs <- ReadInput(ff, compensate = F, transform = F, scale = F)
+# compensate = F, transform = F : there is no compensation matrix
+
+str(fs, max.level = 2)
+```
+
+## Building the self-organizing map
+
+```{r, eval = FALSE}
+# Which columns?
+names(fs$prettyColnames)
+```
+
+In this case, these are all the columns, no need to specify.
+```{r}
+set.seed(params$seed) # set the seed! The same used in "the easy way" if we want to have the same results
+fs <- BuildSOM(fs)
+str(fs$map,max.level = 2)
+```
+
+## Building the minimal spanning tree
+**BuildMST()** will return a FLowSOM object with extra information contained in the $MST parameter.
+```{r}
+fs <- BuildMST(fs,tSNE=TRUE)
+str(fs$MST)
+```
+
+## Plotting
+### Minimal Spanning Tree
+```{r}
+PlotStars(fs)
+```
+
+### SOM grid
+```{r}
+PlotStars(fs, view="grid")
+```
+
+### tSNE
+Only possible when tSNE was TRUE in BuildMST.
+```{r}
+PlotStars(fs,view="tSNE")
+```
+
+## Looking just at one specific marker with `PlotMarker`
+```{r}
+print(colnames(fs$map$medianValues))
+```
+
+```{r}
+for(i in 1:length(colnames(fs$map$medianValues))){
+  PlotMarker(fs, colnames(fs$map$medianValues)[[i]])
+}
+```
+
+```{r}
+for(i in 1:length(colnames(fs$map$medianValues))){
+  PlotMarker(fs, colnames(fs$map$medianValues)[[i]], view = "tSNE")
+}
+```
+
+## Numbering the nodes
+```{r}
+PlotNumbers(UpdateNodeSize(fs,reset=TRUE), nodeSize = 15)
+```
+
+```{r}
+PlotNumbers(UpdateNodeSize(fs,reset=TRUE), nodeSize = 20, view = "grid")
+```
+
+```{r}
+PlotNumbers(UpdateNodeSize(fs,reset=TRUE), nodeSize = 15, view = "tSNE")
+```
+
+```{r}
+PlotClusters2D(fs, "CD3","CD19",c(8, 9, 10, 18, 19, 20))
+```
+
+
+
+## Meta-clustering the data
+This can be the first step in further analysis of the data, and often gives a good approximation of manual gating results.
+
+```{r}
+head(fs$map$codes)
+dim(fs$map$codes)
+```
+
+100 nodes, 5 markers.
+
+K: Number of clusters
+```{r}
+mc <- metaClustering_consensus(fs$map$codes, k = c) # c: number of cell types on the synthetic data
+mc
+```
+
+```{r}
+PlotStars(fs, backgroundValues = as.factor(mc))
+```
+
+```{r}
+PlotStars(fs,view="grid", backgroundValues = as.factor(mc))
+```
+
+```{r}
+PlotStars(fs,view="tSNE", backgroundValues = as.factor(mc))
+```
+
+### Meta-clustering each cell individually
+```{r}
+head(fs$map$mapping)
+```
+
+```{r}
+dim(fs$map$mapping)
+```
+There are `r nrow(fs$map$mapping)` files, one per cell.  
+
+```{r}
+summary(fs$map$mapping[,1])
+# table(fs$map$mapping[,1])
+```
+
+Column 1 assigns one node to each cell (`r max(fs$map$mapping[,1])` nodes).
+
+```{r}
+summary(fs$map$mapping[,2])
+```
+
+I don't know what is on column 2.
+
+```{r}
+mc_cell <- mc[fs$map$mapping[,1]]
+mc_cell[1:10]
+```
+
+```{r}
+table(mc_cell)
+```
+
+It looks nice. As I now how my "cells" are ordered, I can verify for every type of them:
+
+B cells:
+```{r}
+n <- 909
+table(mc_cell[1:n])
+```
+
+NK cells:
+```{r}
+table(mc_cell[(n+1):(n+n)])
+```
+
+T4 cells:
+```{r}
+t <- n + n
+table(mc_cell[(t+1):(t+n)])
+```
+
+T8 cells:
+```{r}
+t <- t + n
+table(mc_cell[(t+1):(t+n)])
+```
+
+NKT_NN cells:
+```{r}
+t <- t + n
+table(mc_cell[(t+1):(t+n)])
+```
+
+NKT_4 cells:
+```{r}
+t <- t + n
+table(mc_cell[(t+1):(t+n)])
+```
+
+NKT_8 cells:
+```{r}
+t <- t + n
+table(mc_cell[(t+1):(t+n)])
+```
+
+U1 cells:
+```{r}
+t <- t + n
+table(mc_cell[(t+1):(t+n)])
+```
+
+U2 cells:
+```{r}
+t <- t + n
+table(mc_cell[(t+1):(t+n)])
+```
+
+U3 cells:
+```{r}
+t <- t + n
+table(mc_cell[(t+1):(t+n)])
+```
+
+U4 cells:
+```{r}
+t <- t + n
+table(mc_cell[(t+1):(t+n)])
+```
+
+#### Evaluating the performance
+
+Matching the labels with the predictions:
+
+```{r}
+#cells <- as.data.frame(cbind(cells = seq(1, length(labels), 1), mc_cell, labels))
+cells <- cbind(as.data.frame(labels), mc_cell)
+head(cells)
+```
+
+```{r, message=FALSE}
+(t <- table(cells$mc_cell, cells$labels))
+```
+
+Finding the maximum number of each cell type (columns) on each cluster (rows):
+```{r}
+(m <- apply(t, 2, which.max))
+```
+
+Replacing the numbers of the clusters by the names of the cell types:
+```{r}
+# on the cell metaclustering
+for(i in 1:length(mc_cell)){
+  for(j in 1:c){
+    if(cells$mc_cell[i] == m[[j]]){
+      cells$mc_cell[i] <- levels(labels)[j] 
+    }
+  }
+}
+
+table(cells$mc_cell, cells$labels)
+```
+
+This is the confusion matrix.
+
+Replacing the numbers of the clusters by the names of the cell types:
+```{r}
+table(mc)
+```
+
+```{r}
+# on the node metaclustering
+for(i in 1:length(mc)){
+  for(j in 1:c){
+    if(mc[i] == m[[j]]){
+      mc[i] <- levels(labels)[j] 
+    }
+  }
+}
+
+table(mc)
+```
+
+Computing the confusion matrix and other performance measurements:
+```{r}
+library(caret)
+cells$mc_cell <- factor(cells$mc_cell, levels = levels(labels))
+(cm <- confusionMatrix(data = cells$mc_cell, reference = labels))
+```
+
+```{r}
+cm$byClass
+```
+
+Great! 
+
+We can visualize the original cell types on the MST:  
+Original cell types are represented as plot pies.  
+We can add the result of the metaclustering on the background.
+```{r}
+PlotPies(fs, cellTypes = labels, backgroundValues = as.factor(mc))
+```
+
+Or on the star plots:
+```{r}
+PlotStars(fs, backgroundValues = as.factor(mc))
+```
+
+Or on the heat maps:
+```{r}
+for(i in 1:length(colnames(fs$map$medianValues))){
+  PlotMarker(fs, colnames(fs$map$medianValues)[[i]], backgroundValues = as.factor(mc))
+}
+```
+
+```{r}
+for(i in 1:length(colnames(fs$map$medianValues))){
+  PlotMarker(fs, colnames(fs$map$medianValues)[[i]], view = "tSNE", backgroundValues = as.factor(mc))
+}
+```
+
+So many colors...
+
+## Detecting nodes with a specific pattern
+I think this functionality will not be very useful.
+```{r}
+# Import the patterns
+patterns <- readRDS(params$pheno)
+patterns
+```
+
+```{r}
+# All nodes as "unknown"
+cellTypes_01 <- factor(rep("Unknown",100),levels=c("Unknown", rownames(patterns)))
+
+for(i in rownames(patterns)){
+  query <-  QueryStarPlot(UpdateNodeSize(fs, reset=T), patterns[i,], plot = F)
+  cellTypes_01[query$selected] <- i
+}
+
+PlotStars(fs, backgroundValues=cellTypes_01)
+```
+
+
+```{r}
+PlotStars(fs,view="tSNE", backgroundValues = cellTypes_01)
+```
+
+
+
+
+
+
