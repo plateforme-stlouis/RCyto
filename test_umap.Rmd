@@ -1,0 +1,334 @@
+---
+title: "UMAP - pop 02"
+output:
+  html_document:
+    number_sections: yes
+    theme: journal
+    toc: yes
+    toc_float: yes
+author: Anna Guadall
+params:
+  file: "ff_02_2019-04-01.fcs"
+  pheno: "pheno_02_2019-04-01"
+  labels: "labels_02_2019-04-01"
+  seed: 23
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(cytofkit)
+```
+
+# Reading the data
+```{r}
+ff <- flowCore::read.FCS(params$file)
+
+# Import the labels
+labels <- readRDS(params$labels)
+
+# number of populations
+c <- length(levels(labels))
+```
+
+# UMAP: Dimensionality reduction
+https://cran.r-project.org/web/packages/umap/vignettes/umap.html  
+
+Our data matrix:
+```{r}
+dim(ff@exprs)
+```
+
+```{r}
+library(umap)
+(umap_red <- umap(ff@exprs, random_state = params$seed))
+# default seed: 42
+```
+
+```{r}
+head(umap_red$layout)
+```
+
+```{r}
+plot(umap_red$layout)
+```
+
+```{r}
+umap.defaults
+```
+
+```{r}
+# combine data
+data <- cbind(as.data.frame(umap_red$layout), as.data.frame(labels))
+head(data)
+```
+
+```{r}
+cytof_clusterPlot(data = data, xlab = "V1", ylab = "V2", 
+                  cluster = "labels", sampleLabel = F, labelSize = 4)
+```
+
+# Partitioning
+## ClusterX: Density peak-finding
+```{r}
+library(cytofkit)
+cluster_x <-  cytof_cluster(umap_red$layout, method = "ClusterX")
+# the number of clusters cannot be fixed
+```
+
+```{r}
+table(cluster_x)
+```
+
+```{r}
+# combine data
+data <- as.data.frame(cbind(data, ClusterX = cluster_x))
+head(data)
+```
+
+```{r}
+cytof_clusterPlot(data = data, xlab = "V1", ylab = "V2", 
+                  cluster = "ClusterX", sampleLabel = F, labelSize = 4)
+```
+
+ClusterX works perfectly with seed = 23. But I had first tested it with with seed = 42 and it was terrible...
+
+```{r}
+library(umap)
+umap_42 <- umap(ff@exprs, random_state = 42)
+library(cytofkit)
+cluster_x_42 <-  cytof_cluster(umap_42$layout, method = "ClusterX")
+data_42 <- as.data.frame(cbind(umap_42$layout, ClusterX_42 = cluster_x_42))
+cytof_clusterPlot(data = data_42, xlab = "V1", ylab = "V2", 
+                  cluster = "ClusterX_42", sampleLabel = F, labelSize = 4)
+```
+
+### Evaluation
+Matching the labels with the predictions:
+```{r}
+(t <- table(cluster_x, labels))
+```
+
+```{r}
+# sorting max values
+max_values <- apply(t, 2, max)
+sorted_max_values <- sort(max_values)
+
+# Finding the maximum number of each cell type (columns) on each cluster (rows):
+m <- apply(t, 2, which.max)
+
+# Adding the label "unknown" to the labels:
+levels(data$labels) <- c(levels(data$labels), "unknown") # JUST ONCE!
+# should do it at the beginning
+
+data$ClusterX <- "unknown" # all unknowns, unless:
+
+# Replacing the numbers of the clusters by the names of the cell types:
+for(i in 1:length(cluster_x)){
+  for(j in 1:c){ 
+    if(cluster_x[i] == m[names(sorted_max_values)[j]]){ # we compare to the sorted names
+      data$ClusterX[i] <- names(sorted_max_values)[j]
+    }
+  }
+}
+
+data$ClusterX <- factor(data$ClusterX, levels = levels(data$labels))
+
+table(data$ClusterX, data$labels)
+```
+
+Computing other performance measurements:
+```{r}
+library(caret)
+(cm <- confusionMatrix(data = data$ClusterX, reference = data$labels))
+
+cm$byClass
+```
+
+
+## FlowMeans
+k-means + merging of clusters
+
+### User-defined number of clusters
+```{r}
+library(flowMeans)
+fm <- flowMeans(umap_red$layout, MaxN = c )
+#  MaxN: maximum number of clusters
+# c is the number of cell types in the synthetic sample
+
+table(fm@Labels[[1]])
+```
+
+```{r}
+data <- as.data.frame(cbind(data, flowmeans = fm@Labels[[1]]))
+
+cytof_clusterPlot(data, xlab="V1", ylab="V2", 
+                  cluster = "flowmeans", sampleLabel = FALSE, labelSize = 4)
+```
+
+#### Evaluation
+Matching the labels with the predictions:
+```{r}
+(t <- table(flow_means = fm@Labels[[1]], labels))
+```
+
+```{r}
+# sorting max values
+max_values <- apply(t, 2, max)
+sorted_max_values <- sort(max_values)
+
+# Finding the maximum number of each cell type (columns) on each cluster (rows):
+m <- apply(t, 2, which.max)
+
+# Adding the label "unknown" to the labels:
+#levels(data$labels) <- c(levels(data$labels), "unknown")
+
+data$flowmeans <- "unknown" # all unknowns, unless:
+
+# Replacing the numbers of the clusters by the names of the cell types:
+for(i in 1:length(fm@Labels[[1]])){
+  for(j in 1:c){ 
+    if(fm@Labels[[1]][i] == m[names(sorted_max_values)[j]]){ # we compare to the sorted names
+      data$flowmeans[i] <- names(sorted_max_values)[j]
+    }
+  }
+}
+
+data$flowmeans <- factor(data$flowmeans, levels = levels(data$labels))
+
+table(data$flowmeans, data$labels)
+```
+
+Here, all B cells are labelled as U4, but it would have been the other way around, all the U4 labelled as B, if the label B had come after U4.  
+As we name the clusters following increasing number of cells, the method will favor the matching to the more abundant populations. 
+
+Computing other performance measurements:
+```{r}
+library(caret)
+(cm <- confusionMatrix(data = data$flowmeans, reference = data$labels))
+
+cm$byClass
+```
+
+### Number of clusters determined automatically
+```{r}
+fm_auto <- flowMeans(umap_red$layout, MaxN = NA )
+#  MaxN: maximum number of clusters
+
+table(fm_auto@Labels[[1]])
+```
+
+```{r}
+data <- as.data.frame(cbind(data, flowmeans_auto = fm_auto@Labels[[1]]))
+
+cytof_clusterPlot(data, xlab="V1", ylab="V2", 
+                  cluster = "flowmeans_auto", sampleLabel = FALSE, labelSize = 4)
+```
+
+#### Evaluation
+Matching the labels with the predictions:
+```{r}
+(t <- table(flow_means = fm_auto@Labels[[1]], labels))
+```
+
+```{r}
+# sorting max values
+max_values <- apply(t, 2, max)
+sorted_max_values <- sort(max_values)
+
+# Finding the maximum number of each cell type (columns) on each cluster (rows):
+m <- apply(t, 2, which.max)
+
+# Adding the label "unknown" to the labels:
+#levels(data$labels) <- c(levels(data$labels), "unknown")
+
+data$flowmeans_auto <- "unknown" # all unknowns, unless:
+
+# Replacing the numbers of the clusters by the names of the cell types:
+for(i in 1:length(fm_auto@Labels[[1]])){
+  for(j in 1:c){ 
+    if(fm_auto@Labels[[1]][i] == m[names(sorted_max_values)[j]]){ # we compare to the sorted names
+      data$flowmeans_auto[i] <- names(sorted_max_values)[j]
+    }
+  }
+}
+
+data$flowmeans_auto <- factor(data$flowmeans_auto, levels = levels(data$labels))
+
+table(data$flowmeans_auto, data$labels)
+```
+
+Computing other performance measurements:
+```{r}
+library(caret)
+(cm <- confusionMatrix(data = data$flowmeans_auto, reference = data$labels))
+
+cm$byClass
+```
+
+## FlowPeaks
+k-means + finite mixture model
+
+```{r}
+library(flowPeaks)
+red_data <- as.matrix(umap_red$layout)
+colnames(red_data) <- c("V1", "V2")
+fp <-  flowPeaks(red_data)
+
+table(fp$peaks.cluster)
+```
+
+```{r}
+plot(fp)
+```
+
+```{r}
+data <- as.data.frame(cbind(data, flow_peaks = fp$peaks.cluster))
+
+cytof_clusterPlot(data, xlab="V1", ylab="V2", 
+                  cluster = "flow_peaks", sampleLabel = FALSE, labelSize = 4)
+```
+
+### Evaluation
+Matching the labels with the predictions:
+```{r}
+(t <- table(flow_peaks = fp$peaks.cluster, labels))
+```
+
+```{r}
+# sorting max values
+max_values <- apply(t, 2, max)
+sorted_max_values <- sort(max_values)
+
+# Finding the maximum number of each cell type (columns) on each cluster (rows):
+m <- apply(t, 2, which.max)
+
+data$flow_peaks <- "unknown" # all unknowns, unless:
+
+# Replacing the numbers of the clusters by the names of the cell types:
+for(i in 1:length(fp$peaks.cluster)){
+  for(j in 1:c){ 
+    if(fp$peaks.cluster[i] == m[names(sorted_max_values)[j]]){ # we compare to the sorted names
+      data$flow_peaks[i] <- names(sorted_max_values)[j]
+    }
+  }
+}
+
+data$flow_peaks <- factor(data$flow_peaks, levels = levels(data$labels))
+
+table(data$flow_peaks, data$labels)
+```
+
+Computing other performance measurements:
+```{r}
+library(caret)
+(cm <- confusionMatrix(data = data$flow_peaks, reference = data$labels))
+
+cm$byClass
+```
+
+
+
+
