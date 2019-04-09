@@ -1,0 +1,366 @@
+---
+title: "t-SNE - pop 02"
+output:
+  html_document:
+    number_sections: yes
+    theme: journal
+    toc: yes
+    toc_float: yes
+author: Anna Guadall
+params:
+  file: "ff_02_2019-04-01.fcs"
+  pheno: "pheno_02_2019-04-01"
+  labels: "labels_02_2019-04-01"
+  seed: 23
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, cache = F)
+```
+
+# Reading the data
+```{r}
+ff <- flowCore::read.FCS(params$file)
+
+# Import the labels
+labels <- readRDS(params$labels)
+
+# number of populations
+c <- length(levels(labels))
+```
+
+# t-SNE: Dimensionality reduction
+Our data matrix:
+```{r}
+dim(ff@exprs)
+```
+
+We use t-SNE from the **Cytofkit** package:  
+
+https://www.bioconductor.org/packages/3.7/bioc/vignettes/cytofkit/inst/doc/cytofkit_example.html
+```{r}
+library(cytofkit)
+# in the example, data is transformed prior to t-SNE reduction
+tsne_red <-  cytof_dimReduction(data = ff@exprs, method = "tsne", tsneSeed = params$seed)
+# default seed : 42 
+
+head(tsne_red)
+```
+
+```{r}
+plot(tsne_red)
+```
+
+```{r}
+# combine data
+data <- cbind(as.data.frame(tsne_red), as.data.frame(labels))
+head(data)
+```
+
+```{r}
+cytof_clusterPlot(data = data, xlab = "tsne_1", ylab = "tsne_2", 
+                  cluster = "labels", sampleLabel = FALSE, labelSize = 4)
+```
+
+# Partitioning
+## ClusterX: Density peak-finding
+```{r}
+cluster_x <-  cytof_cluster(tsne_red, method = "ClusterX")
+# the number of clusters cannot be fixed
+```
+
+```{r}
+table(cluster_x)
+```
+
+```{r}
+# combine data
+data <- as.data.frame(cbind(data, ClusterX = cluster_x))
+head(data)
+```
+
+```{r}
+cytof_clusterPlot(data=data, xlab="tsne_1", ylab="tsne_2",
+                  cluster="ClusterX", sampleLabel = F, labelSize = 4)
+```
+
+Dots can be replaed by sample labels:
+```{r}
+cytof_clusterPlot(data = data, xlab="tsne_1", ylab="tsne_2",  sample = "labels",
+                  cluster="ClusterX", sampleLabel = T, labelSize = 4)
+```
+
+### Evaluation
+Matching the labels with the predictions:
+```{r}
+(t <- table(cluster_x, labels))
+```
+
+Finding the maximum number of each cell type (columns) on each cluster (rows):
+```{r}
+(m <- apply(t, 2, which.max))
+```
+
+Replacing the numbers of the clusters by the names of the cell types:
+```{r}
+for(i in 1:length(cluster_x)){
+  for(j in 1:c){
+    if(cluster_x[i] == m[[j]]){
+      data$ClusterX[i] <- levels(labels)[j] 
+    }
+  }
+}
+
+table(data$ClusterX, data$labels)
+```
+
+What can we do with the extra labels? Maybe I could class them as "unknown". I should also add this class to the labels list:
+```{r}
+# Adding the label "unknown" to the labels:
+levels(data$labels) <- c(levels(data$labels), "unknown")
+
+(t <- table(cluster_x, data$labels))
+```
+
+```{r}
+m <- apply(t, 2, which.max)
+
+data$ClusterX <-  "unknown" # all unknowns, unless:
+
+for(i in 1:length(cluster_x)){
+  for(j in 1:c){
+    if(cluster_x[i] == m[[j]]){
+      data$ClusterX[i] <- levels(labels)[j] # labels has 11 levels
+    }
+  }
+}
+
+table(data$ClusterX, data$labels) # data$labels has 12 levels
+```
+
+This is the confusion matrix.  
+Computing other performance measurements:
+```{r}
+data$ClusterX <- factor(data$ClusterX, levels = levels(data$labels))
+
+library(caret)
+(cm <- confusionMatrix(data = data$ClusterX, reference = data$labels))
+
+cm$byClass
+```
+
+The F1 scores can be found on:
+```{r, eval=FALSE}
+cm$byClass[,7]
+```
+
+## FlowMeans
+k-means + merging of clusters
+
+### User-defined number of clusters
+```{r}
+library(flowMeans)
+fm <- flowMeans(tsne_red, MaxN = c )
+#  MaxN: maximum number of clusters
+# c is the number of cell types in the synthetic sample
+
+table(fm@Labels[[1]])
+```
+
+```{r}
+data <- as.data.frame(cbind(data, flowmeans = fm@Labels[[1]]))
+
+cytof_clusterPlot(data, xlab="tsne_1", ylab="tsne_2", 
+                  cluster = "flowmeans", sampleLabel = FALSE, labelSize = 4)
+```
+
+#### Evaluation
+Matching the labels with the predictions:
+```{r}
+(t <- table(flowmeans = fm@Labels[[1]], labels))
+```
+
+```{r}
+m <- apply(t, 2, which.max)
+
+data$flowmeans <-  "unknown" # all unknowns, unless:
+
+for(i in 1:length(fm@Labels[[1]])){
+  for(j in 1:c){
+    if(fm@Labels[[1]][i] == m[[j]]){
+      data$flowmeans[i] <- levels(labels)[j] 
+    }
+  }
+}
+
+data$flowmeans <- factor(data$flowmeans, levels = levels(data$labels))
+
+table(flowmeans = data$flowmeans, labels = data$labels)
+```
+
+This is the confusion matrix.  
+Computing other performance measurements:
+```{r}
+library(caret)
+(cm <- confusionMatrix(data = data$flowmeans, reference = data$labels))
+
+cm$byClass
+```
+
+### Number of clusters determined automatically
+```{r}
+fm_auto <- flowMeans(tsne_red, MaxN = NA )
+#  MaxN: maximum number of clusters
+
+table(fm_auto@Labels[[1]])
+```
+
+```{r}
+data <- as.data.frame(cbind(data, flowmeans_auto = fm_auto@Labels[[1]]))
+
+cytof_clusterPlot(data, xlab="tsne_1", ylab="tsne_2", 
+                  cluster = "flowmeans_auto", sampleLabel = FALSE, labelSize = 4)
+```
+
+#### Evaluation
+Matching the labels with the predictions:
+```{r}
+(t <- table(flowmeans = fm_auto@Labels[[1]], labels))
+```
+
+```{r}
+m <- apply(t, 2, which.max)
+
+data$flowmeans_auto <- "unknown" # all unknowns, unless:
+
+for(i in 1:length(fm_auto@Labels[[1]])){
+  for(j in 1:c){
+    if(fm_auto@Labels[[1]][i] == m[[j]]){
+      data$flowmeans_auto[i] <- levels(labels)[j] 
+    }
+  }
+}
+
+data$flowmeans_auto<- factor(data$flowmeans_auto, levels = levels(data$labels))
+
+table(data$flowmeans_auto, data$labels)
+```
+
+There is a problem here. B max is on cluster 9. But THEN, T4 max is also in cluster 9. So the B cells are matched as T4. How could we solve that? The maximum values should be oredered increasingly:
+```{r}
+(max_values <- apply(t, 2, max))
+```
+
+```{r}
+m
+```
+
+```{r}
+(sorted_max_values <- sort(max_values))
+```
+
+```{r}
+m <- apply(t, 2, which.max)
+
+data$flowmeans_auto <- "unknown" # all unknowns, unless:
+
+for(i in 1:length(fm_auto@Labels[[1]])){
+  for(j in 1:c){ 
+    n <- names(sorted_max_values)[j] # we compare to the sorted names
+    if(fm_auto@Labels[[1]][i] == m[n]){ 
+      data$flowmeans_auto[i] <- n
+    }
+  }
+}
+
+data$flowmeans_auto <- factor(data$flowmeans_auto, levels = levels(data$labels))
+
+table(data$flowmeans_auto, data$labels)
+```
+
+We should remember the plots:
+```{r}
+cytof_clusterPlot(data, xlab="tsne_1", ylab="tsne_2", 
+                  cluster = "labels", sampleLabel = FALSE, labelSize = 4)
+cytof_clusterPlot(data, xlab="tsne_1", ylab="tsne_2", 
+                  cluster = "flowmeans_auto", sampleLabel = FALSE, labelSize = 4)
+```
+
+Now the match is correct.
+
+Computing other performance measurements:
+```{r}
+library(caret)
+(cm <- confusionMatrix(data = data$flowmeans_auto, reference = data$labels))
+
+cm$byClass
+```
+
+
+## FlowPeaks
+k-means + finite mixture model
+
+```{r}
+library(flowPeaks)
+red_data <- as.matrix(tsne_red)
+colnames(red_data) <- c("tsne_1", "tsne_2")
+fp <-  flowPeaks(red_data)
+```
+
+```{r}
+table(fp$peaks.cluster)
+```
+
+```{r}
+plot(fp)
+```
+
+```{r}
+data <- as.data.frame(cbind(data, flow_peaks = fp$peaks.cluster))
+
+cytof_clusterPlot(data, xlab="tsne_1", ylab="tsne_2", 
+                  cluster = "flow_peaks", sampleLabel = FALSE, labelSize = 4)
+```
+
+### Evaluation
+Matching the labels with the predictions:
+```{r}
+(t <- table(flow_peaks = fp$peaks.cluster, labels))
+```
+
+```{r}
+(max_values <- apply(t, 2, max))
+```
+
+```{r}
+(sorted_max_values <- sort(max_values))
+```
+
+```{r}
+m <- apply(t, 2, which.max)
+
+data$flow_peaks <- "unknown" # all unknowns, unless:
+
+for(i in 1:length(fp$peaks.cluster)){
+  for(j in 1:c){ 
+    if(fp$peaks.cluster[i] == m[names(sorted_max_values)[j]]){ # we compare to the sorted names
+      data$flow_peaks[i] <- names(sorted_max_values)[j]
+    }
+  }
+}
+
+data$flow_peaks <- factor(data$flow_peaks, levels = levels(data$labels))
+
+table(data$flow_peaks, data$labels)
+```
+
+Computing other performance measurements:
+```{r}
+library(caret)
+(cm <- confusionMatrix(data = data$flow_peaks, reference = data$labels))
+
+cm$byClass
+```
+
+
+
