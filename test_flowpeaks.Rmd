@@ -1,0 +1,117 @@
+---
+title: "FlowPeaks - pop 02"
+subtitle: "Without previous dimensionality reduction"
+output:
+  html_document:
+    number_sections: yes
+    theme: journal
+    toc: yes
+    toc_float: yes
+author: Anna Guadall
+params:
+  file: "ff_02_2019-04-01.fcs"
+  pheno: "pheno_02_2019-04-01"
+  labels: "labels_02_2019-04-01"
+  seed: 23
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(cytofkit)
+```
+
+# Reading the data
+```{r}
+ff <- flowCore::read.FCS(params$file)
+
+# Import the labels
+labels <- readRDS(params$labels)
+
+# number of populations
+c <- length(levels(labels))
+```
+
+Our data matrix:
+```{r}
+dim(ff@exprs)
+```
+
+```{r}
+# t-SNE to visualize results
+tsne_red <-  cytof_dimReduction(data = ff@exprs, method = "tsne", tsneSeed = params$seed)
+
+data <- cbind(as.data.frame(tsne_red), as.data.frame(labels))
+cytof_clusterPlot(data = data, xlab = "tsne_1", ylab = "tsne_2", 
+                  cluster = "labels", sampleLabel = FALSE, labelSize = 4)
+```
+
+# Partitioning: FlowPeaks
+k-means + finite mixture model
+http://127.0.0.1:28454/library/flowPeaks/doc/flowPeaks-guide.pdf
+
+```{r}
+library(flowPeaks)
+
+fp <-  flowPeaks(ff@exprs)
+
+table(fp$peaks.cluster)
+```
+
+```{r}
+plot(fp)
+```
+
+```{r}
+data <- as.data.frame(cbind(data, flow_peaks = fp$peaks.cluster))
+
+cytof_clusterPlot(data, xlab = "tsne_1", ylab = "tsne_2", 
+                  cluster = "flow_peaks", sampleLabel = FALSE, labelSize = 4)
+```
+
+### Evaluation
+Matching the labels with the predictions:
+```{r}
+(t <- table(flow_peaks = fp$peaks.cluster, labels))
+```
+
+```{r}
+# sorting max values
+max_values <- apply(t, 2, max)
+sorted_max_values <- sort(max_values)
+
+# Finding the maximum number of each cell type (columns) on each cluster (rows):
+m <- apply(t, 2, which.max)
+
+# Adding the label "unknown" to the labels:
+levels(data$labels) <- c(levels(data$labels), "unknown")
+
+data$flow_peaks <- "unknown" # all unknowns, unless:
+
+# Replacing the numbers of the clusters by the names of the cell types:
+for(i in 1:length(fp$peaks.cluster)){
+  for(j in 1:c){ 
+    if(fp$peaks.cluster[i] == m[names(sorted_max_values)[j]]){ # we compare to the sorted names
+      data$flow_peaks[i] <- names(sorted_max_values)[j]
+    }
+  }
+}
+
+data$flow_peaks <- factor(data$flow_peaks, levels = levels(data$labels))
+
+table(data$flow_peaks, data$labels)
+```
+
+Computing other performance measurements:
+```{r}
+library(caret)
+(cm <- confusionMatrix(data = data$flow_peaks, reference = data$labels))
+
+cm$byClass
+```
+
+
+
+
