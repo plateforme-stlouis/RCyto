@@ -1,0 +1,171 @@
+---
+title: "FlowMeans - pop 02"
+subtitle: Without previous dimensionality reduction
+output:
+  html_document:
+    number_sections: yes
+    theme: journal
+    toc: yes
+    toc_float: yes
+author: Anna Guadall
+params:
+  file: "ff_02_2019-04-01.fcs"
+  pheno: "pheno_02_2019-04-01"
+  labels: "labels_02_2019-04-01"
+  seed: 23
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(cytofkit)
+```
+
+# Reading the data
+```{r}
+ff <- flowCore::read.FCS(params$file)
+
+# Import the labels
+labels <- readRDS(params$labels)
+
+# number of populations
+c <- length(levels(labels))
+```
+
+Our data matrix:
+```{r}
+dim(ff@exprs)
+```
+
+```{r}
+# t-SNE to visualize results
+tsne_red <-  cytof_dimReduction(data = ff@exprs, method = "tsne", tsneSeed = params$seed)
+
+data <- cbind(as.data.frame(tsne_red), as.data.frame(labels))
+cytof_clusterPlot(data = data, xlab = "tsne_1", ylab = "tsne_2", 
+                  cluster = "labels", sampleLabel = FALSE, labelSize = 4)
+```
+
+# Partitioning: FlowMeans
+k-means + merging of clusters
+http://127.0.0.1:28454/library/flowMeans/doc/flowMeans.pdf
+
+### User-defined number of clusters
+```{r}
+library(flowMeans)
+fm <- flowMeans(ff@exprs, MaxN = c )
+#  MaxN: maximum number of clusters
+# c is the number of cell types in the synthetic sample
+
+table(fm@Labels[[1]])
+```
+
+```{r}
+data <- as.data.frame(cbind(data, flowmeans = fm@Labels[[1]]))
+
+cytof_clusterPlot(data, xlab = "tsne_1", ylab = "tsne_2", 
+                  cluster = "flowmeans", sampleLabel = FALSE, labelSize = 4)
+```
+
+#### Evaluation
+Matching the labels with the predictions:
+```{r}
+(t <- table(flow_means = fm@Labels[[1]], labels))
+```
+
+```{r}
+# sorting max values
+max_values <- apply(t, 2, max)
+sorted_max_values <- sort(max_values)
+
+# Finding the maximum number of each cell type (columns) on each cluster (rows):
+m <- apply(t, 2, which.max)
+
+# Adding the label "unknown" to the labels:
+levels(data$labels) <- c(levels(data$labels), "unknown")
+
+data$flowmeans <- "unknown" # all unknowns, unless:
+
+# Replacing the numbers of the clusters by the names of the cell types:
+for(i in 1:length(fm@Labels[[1]])){
+  for(j in 1:c){ 
+    if(fm@Labels[[1]][i] == m[names(sorted_max_values)[j]]){ # we compare to the sorted names
+      data$flowmeans[i] <- names(sorted_max_values)[j]
+    }
+  }
+}
+
+data$flowmeans <- factor(data$flowmeans, levels = levels(data$labels))
+
+table(data$flowmeans, data$labels)
+```
+
+Here, all B cells are labelled as U4, but it would have been the other way around, all the U4 labelled as B, if the label B had come after U4.  
+As we name the clusters following increasing number of cells, the method will favor the matching to the more abundant populations. 
+
+Computing other performance measurements:
+```{r}
+library(caret)
+(cm <- confusionMatrix(data = data$flowmeans, reference = data$labels))
+
+cm$byClass
+```
+
+### Number of clusters determined automatically
+```{r}
+fm_auto <- flowMeans(ff@exprs, MaxN = NA )
+#  MaxN: maximum number of clusters
+
+table(fm_auto@Labels[[1]])
+```
+
+```{r}
+data <- as.data.frame(cbind(data, flowmeans_auto = fm_auto@Labels[[1]]))
+
+cytof_clusterPlot(data,  xlab = "tsne_1", ylab = "tsne_2", 
+                  cluster = "flowmeans_auto", sampleLabel = FALSE, labelSize = 4)
+```
+
+#### Evaluation
+Matching the labels with the predictions:
+```{r}
+(t <- table(flow_means = fm_auto@Labels[[1]], labels))
+```
+
+```{r}
+# sorting max values
+max_values <- apply(t, 2, max)
+sorted_max_values <- sort(max_values)
+
+# Finding the maximum number of each cell type (columns) on each cluster (rows):
+m <- apply(t, 2, which.max)
+
+# Adding the label "unknown" to the labels:
+#levels(data$labels) <- c(levels(data$labels), "unknown")
+
+data$flowmeans_auto <- "unknown" # all unknowns, unless:
+
+# Replacing the numbers of the clusters by the names of the cell types:
+for(i in 1:length(fm_auto@Labels[[1]])){
+  for(j in 1:c){ 
+    if(fm_auto@Labels[[1]][i] == m[names(sorted_max_values)[j]]){ # we compare to the sorted names
+      data$flowmeans_auto[i] <- names(sorted_max_values)[j]
+    }
+  }
+}
+
+data$flowmeans_auto <- factor(data$flowmeans_auto, levels = levels(data$labels))
+
+table(data$flowmeans_auto, data$labels)
+```
+
+Computing other performance measurements:
+```{r}
+library(caret)
+(cm <- confusionMatrix(data = data$flowmeans_auto, reference = data$labels))
+
+cm$byClass
+```
+
