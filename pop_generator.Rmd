@@ -132,19 +132,6 @@ for(i in 1:length(markers)){
 plot(pop[,2:(length(markers)+1)])
 ```
 
-# Rearranging
-```{r}
-# Randomly sampling
-set.seed(42)
-x <- sample(1:n, n, replace = F)
-
-# Rearranging the dataframe
-pop <- pop[x,]
-
-# Renaming the rows (in order)
-rownames(pop) <- 1:n
-```
-
 # Conversion to `FlowFrame` class objects
 ```{r}
 library(flowCore)
