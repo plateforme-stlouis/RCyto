@@ -103,7 +103,8 @@ for(i in (1:length(cells))){      # i takes values [1, number of CELL TYPES]
 # Name the variables:
 names(pop) <- c("cells", markers)
 
-# REARRANGING
+
+#### REARRANGING ###
 # Randomly sampling
 set.seed(42)
 x <- sample(1:n, n, replace = F)
@@ -111,6 +112,7 @@ x <- sample(1:n, n, replace = F)
 pop <- pop[x,] # Rearranging the dataframe
 
 rownames(pop) <- 1:n # Renaming the rows (in order)
+
 
 # Save the column with the cell labels to a file
 saveRDS(pop$cells, 
