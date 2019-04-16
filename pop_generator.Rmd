@@ -2,8 +2,8 @@
 title: "POP generator"
 output: html_document
 params:
-  pop_number: "02"
-  dir: "test_02"
+  pop_number: "03"
+  dir: "test_03"
 ---
 
 ```{r setup, include=FALSE}
@@ -119,6 +119,19 @@ for(i in 1:length(markers)){
 
 ```{r}
 plot(pop[,2:(length(markers)+1)])
+```
+
+# Rearranging
+```{r}
+# Randomly sampling
+set.seed(42)
+x <- sample(1:n, n, replace = F)
+
+# Rearranging the dataframe
+pop <- pop[x,]
+
+# Renaming the rows (in order)
+rownames(pop) <- 1:n
 ```
 
 # Conversion to `FlowFrame` class objects
