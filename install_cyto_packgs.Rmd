@@ -1,0 +1,296 @@
+---
+title: "Installing packages for cytometry analysis"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+http://bioconductor.org/install/
+
+# Bioconductor
+## BiocManager
+Necessary to install Bioconductor Packages
+```{r}
+if (!requireNamespace("BiocManager"))
+    install.packages("BiocManager")
+BiocManager::install()
+```
+
+## Bioconductor Packages
+### BiocStyle
+```{r}
+BiocManager::install(c("BiocStyle"))
+```
+
+### flowCore
+Basic Functions for Flow Cytometry Data
+```{r}
+BiocManager::install("flowCore", version = "3.8")
+```
+```{r}
+browseVignettes("flowCore")
+```
+The pdf on vignettes has date January 4, 2019. This vignette has several errors. Find the last pdf of February 26, 2019 here: https://www.bioconductor.org/packages/devel/bioc/vignettes/flowCore/inst/doc/HowTo-flowCore.pdf
+
+### ggcyto
+A ggplot2 graphics implementation.
+```{r}
+BiocManager::install("ggcyto", version = "3.8")
+```
+```{r}
+browseVignettes("ggcyto")
+```
+
+### flowWorkspaceData
+```{r}
+BiocManager::install("flowWorkspaceData", version = "3.8")
+```
+
+### SPADE
+package ‘spade’ is not available (for R version 3.5.2)  
+package ‘spade’ has been removed with Bioconductor 3.4 release  
+This package is for version 2.12 of Bioconductor  
+
+### FlowSOM
+FlowSOM offers visualization options for cytometry data, by using Self-Organizing Map clustering and Minimal Spanning Trees.
+```{r}
+BiocManager::install("FlowSOM", version = "3.8")
+```
+```{r}
+browseVignettes("FlowSOM")
+```
+
+### oneSENSE
+```{r}
+BiocManager::install("oneSENSE", version = "3.8")
+```
+```{r}
+browseVignettes("oneSENSE")
+```
+
+### flowMAP
+Mapping cell populations in flow cytometry data for cross-sample comparisons using the Friedman-Rafsky Test  
+Friedman-Rafskty (FR) statistic to compare similarity between cell populations across multiple flow cytometry samples  
+determine cell population groups across samples
+```{r}
+BiocManager::install("flowMap", version = "3.8")
+```
+```{r}
+browseVignettes("flowMap")
+```
+
+### CytoML
+A GatingML Interface for Cross Platform Cytometry Data Sharing
+```{r}
+BiocManager::install("CytoML", version = "3.8")
+```
+
+### flowAI
+Automatic and GUI methods to do quality control on Flow cytometry Data
+```{r}
+BiocManager::install("flowAI", version = "3.8")
+```
+```{r}
+browseVignettes("flowAI")
+```
+
+### flowClean
+performing quality control on flow cytomery datasets.
+```{r}
+BiocManager::install("flowClean", version = "3.8")
+```
+```{r}
+browseVignettes("flowClean")
+```
+
+### flowMeans
+Non-parametric Flow Cytometry Data Gating
+```{r}
+BiocManager::install("flowMeans", version = "3.8")
+```
+```{r}
+browseVignettes("flowMeans")
+```
+
+### flowPeaks
+```{r}
+BiocManager::install("flowPeaks", version = "3.8")
+```
+```{r}
+browseVignettes("flowPeaks")
+```
+
+### SamSPECTRAL
+```{r}
+BiocManager::install("SamSPECTRAL", version = "3.8")
+```
+```{r}
+browseVignettes("SamSPECTRAL")
+```
+
+### Cytofast
+Quickly visualizing and analyzing the output of Cytosplore; software used to characterizes and cluster immune subsets from flow or mass cytometry (CyTOF) data.  
+IMAGING FOR CLUSTERS  
+http://www.bioconductor.org/packages/devel/bioc//vignettes/cytofast/inst/doc/spitzer.html  
+https://www.sciencedirect.com/science/article/pii/S200103701830059X
+```{r}
+BiocManager::install("cytofast")
+```
+
+## Updating installed Bioconductor Packages
+```{r}
+BiocManager::install()
+```
+```{r}
+browseVignettes("CytoML")
+```
+
+
+# Not in Bioconductor
+## UMAP
+Uniform manifold approximation and projection is a technique for dimension reduction.   
+https://cran.r-project.org/web/packages/umap/index.html
+```{r}
+install.packages("umap")
+```
+https://cran.r-project.org/web/packages/umap/vignettes/umap.html  
+
+## Rphenograph
+```{r}
+if(!require(devtools)){
+  install.packages("devtools") # If not already installed
+}
+devtools::install_github("JinmiaoChenLab/Rphenograph")
+```
+https://github.com/JinmiaoChenLab/Rphenograph
+
+## Cytofkit
+cytofkit: an integrated mass cytometry data analysis pipeline  
+https://www.rdocumentation.org/packages/cytofkit/versions/1.4.8
+```{r}
+devtools::install_github("JinmiaoChenLab/cytofkit")
+```
+
+## Rclusterpp
+clang: error: unsupported option '-fopenmp'
+
+Large-scale hierarchical clustering in R  
+https://github.com/nolanlab/Rclusterpp  
+https://github.com/nolanlab/Rclusterpp/wiki/Getting-Started  
+Installation using MacPorts and g++4.8 (With OpenMP Support)  
+
+I install XCode 10.1  
+https://itunes.apple.com/us/app/xcode/id497799835?ls=1&mt=12  
+
+I install MacPorts  
+https://www.macports.org/install.php  
+After installation is done, it is recommended that you run this step manually on a regular basis to to keep your MacPorts system always current:  
+sudo port -v selfupdate  
+
+I try to install gcc version 4.8: sudo port install gcc48  
+Error: building gcc48 is not supported with Xcode 9 or greater
+Error: Failed to fetch gcc48: unsupported platform
+
+In fact:
+gcc --version
+Configured with: --prefix=/Applications/Xcode.app/Contents/Developer/usr --with-gxx-include-dir=/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX10.14.sdk/usr/include/c++/4.2.1
+Apple LLVM version 10.0.0 (clang-1000.11.45.5)
+Target: x86_64-apple-darwin18.2.0
+Thread model: posix
+InstalledDir: /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin
+
+I install /Library/Developer/CommandLineTools/Packages/macOS_SDK_headers_for_macOS_10.14.pkg 
+
+**THIS HAS BEEN THE SOLUTION:**
+https://github.com/velocyto-team/velocyto.R/issues/2
+Install gfortran as suggested: https://gcc.gnu.org/wiki/GFortranBinaries  
+Homebrew offers the latest stable gfortran release as part of the "gcc" package.
+First, I install Homebrew  
+Then: brew install gcc  
+
+Download clang-4.0.0-darwin15.6-Release.tar.gz and uncompress.  
+Move to /usr/local/  
+
+create ~/.R/Makevars such as
+CC=/usr/local/clang4/bin/clang
+CXX=/usr/local/clang4/bin/clang++
+LDFLAGS=-L/usr/local/clang4/lib
+
+export PATH=/usr/local/clang4/bin:$PATH
+**Should I add it to ~/.bash_profile?**
+
+```{r}
+devtools::install_github("nolanlab/Rclusterpp")
+```
+
+## SPADE
+Needs Rclusterpp
+```{r}
+devtools::install_github("nolanlab/spade")
+```
+
+
+## scaffold
+https://github.com/ParkerICI/flow-analysis-tutorial  
+Scaffold has been divided in grappolo, vite and panorama.  
+
+### grappolo
+clustering of .fcs files  
+https://github.com/ParkerICI/grappolo
+```{r}
+devtools::install_github("ParkerICI/grappolo")
+```
+
+### vite
+This package enables the analysis of single-cell data using graphs, both unsupervised graphs as well as scaffold maps. While the package is designed to work with clusters generated from the grappolo package, any kind of tabular input data can be used as input.  
+https://github.com/ParkerICI/vite
+```{r}
+devtools::install_github("ParkerICI/vite")
+```
+
+### panorama
+Visualization of the graph
+https://github.com/ParkerICI/panorama
+```{r}
+devtools::install_github("ParkerICI/panorama")
+```
+
+
+## Citrus
+https://github.com/nolanlab/citrus/wiki/Installing-Citrus
+```{r}
+devtools::install_github('nolanlab/citrus')
+```
+Error: package or namespace load failed for ‘samr’ in loadNamespace(j <- i[[1L]], c(lib.loc, .libPaths()), versionCheck = vI[[j]]):
+ there is no package called ‘impute’
+Error : package ‘samr’ could not be loaded
+ERROR: lazy loading failed for package ‘citrus’
+
+```{r}
+BiocManager::install("impute", version = "3.8")
+```
+With impute I can install citrus.
+
+
+# Not in R
+## Vortex
+I download the latest release: https://github.com/nolanlab/vortex/releases  
+System requirements: Java 1.8 64-bit  
+java -version :  
+java version "1.6.0_65"  
+Java(TM) SE Runtime Environment (build 1.6.0_65-b14-468)  
+Java HotSpot(TM) 64-Bit Server VM (build 20.65-b04-468, mixed mode)  
+
+I install jenv from brew (to manage java environments):  
+https://stackoverflow.com/questions/33259758/switching-from-java-1-6-to-1-8-on-a-mac  
+brew install jenv  
+echo 'export PATH="$HOME/.jenv/bin:$PATH"' >> ~/.bash_profile  
+echo 'eval "$(jenv init -)"' >> ~/.bash_profile  
+exec $SHELL -l
+
+
+
+
+
