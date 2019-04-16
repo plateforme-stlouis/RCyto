@@ -108,11 +108,9 @@ names(pop) <- c("cells", markers)
 set.seed(42)
 x <- sample(1:n, n, replace = F)
 
-# Rearranging the dataframe
-pop <- pop[x,]
+pop <- pop[x,] # Rearranging the dataframe
 
-# Renaming the rows (in order)
-rownames(pop) <- 1:n
+rownames(pop) <- 1:n # Renaming the rows (in order)
 
 # Save the column with the cell labels to a file
 saveRDS(pop$cells, 
