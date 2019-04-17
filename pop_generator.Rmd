@@ -2,9 +2,12 @@
 title: "POP generator"
 output: html_document
 params:
-  pop_number: "03"
-  dir: "test_03"
+  pop_number: "06"
+  cells: 10000
+  seed: 23
 ---
+
+Like test_05, 50,000 cells
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
@@ -14,9 +17,9 @@ knitr::opts_chunk$set(echo = TRUE)
 ```{r INFO}
 # MFI values for NEG and POS cells
 neg_mean <- 50
-neg_sd <- 500
+neg_sd <- 1000
 pos_mean <- 5000
-pos_sd <- 500
+pos_sd <- 1000
 
 # phenotypes OF INTEREST
 B <-      c("CD3" = "low",  "CD4" = "low",  "CD8" = "low",  "CD56" = "low",  "CD19" = "high")
@@ -30,8 +33,7 @@ NKT_8 <-  c("CD3" = "high", "CD4" = "low",  "CD8" = "high", "CD56" = "high", "CD
 pheno <- as.data.frame(rbind(B, NK, T4, T8, NKT_NN, NKT_4, NKT_8))
 
 # Save the pheno table (cell types of INTEREST) object to a file
-saveRDS(pheno, 
-        file.path(params$dir, paste("pheno", params$pop_number, Sys.Date(), sep = "_")))
+saveRDS(pheno, paste("pheno", params$pop_number, Sys.Date(), sep = "_"))
 
 # UNKNOWN CELLS
 U1 <- c("CD3" = "low",  "CD4" = "low",  "CD8" = "low", "CD56" = "low", "CD19" = "low")
@@ -50,11 +52,11 @@ pheno <- (rbind(pheno,
 p <- 100/nrow(pheno)
 
 # or specify it here:
-pc <- c("B" = p, "NK" = p, "T4" = p, "T8" = p, "NKT_NN" = p, "NKT_4" = p, "NKT_8" = p, 
-        "U1" = p, "U2" = p, "U3" = p, "U4" = p)
+pc <- c("B" = 15, "NK" = 6, "T4" = 44, "T8" = 17.5, "NKT_NN" = 2, "NKT_4" = 0.5, "NKT_8" = 1.5, 
+        "U1" = 4.25, "U2" = 0.75, "U3" = 6.5, "U4" = 2)
 
 # total number of cells
-n <- 10000
+n <- params$cells
 
 # number of cells per cell type
 ns <- c()
@@ -76,7 +78,7 @@ pheno
 
 ```{r}
 # creating the dataframe
-set.seed(1239)
+set.seed(params$seed)
 for(i in (1:length(cells))){      # i takes values [1, number of CELL TYPES]
   # For cell type i, repeat its name as many times as the number of cells 
   c <- rep(cells[i], ns[i]) 
@@ -115,8 +117,7 @@ rownames(pop) <- 1:n # Renaming the rows (in order)
 
 
 # Save the column with the cell labels to a file
-saveRDS(pop$cells, 
-        file.path(params$dir, paste("labels", params$pop_number, Sys.Date(), sep = "_")))
+saveRDS(pop$cells, paste("labels", params$pop_number, Sys.Date(), sep = "_"))
 
 head(pop)
 ```
@@ -141,18 +142,16 @@ ff <- new("flowFrame", exprs = as.matrix(pop[,-1]))
 
 ```{r}
 library(ggcyto)
-autoplot(ff, markers[1], markers[2])
+autoplot(ff, markers[1], markers[5])
 ```
 
 ```{r}
-autoplot(ff, markers[5])
+autoplot(ff, markers[1])
 ```
 
 # Export to .fcs
-```{r, eval = FALSE}
-write.FCS(ff, 
-          file.path(params$dir,
-            paste("ff_", params$pop_number, "_", Sys.Date(), ".fcs", sep = "")))
+```{r, eval = T}
+write.FCS(ff, paste("ff_", params$pop_number, "_", Sys.Date(), ".fcs", sep = ""))
 ```
 
 
