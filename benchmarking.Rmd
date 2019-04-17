@@ -16,7 +16,7 @@ params:
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = FALSE, message = FALSE)
+knitr::opts_chunk$set(echo = FALSE, message = FALSE, cache = T)
 ```
 
 ```{r libraries, message=FALSE}
@@ -389,21 +389,30 @@ for(i in 1:length(seeds)){
 
 # Evaluation
 ```{r}
-summ <- data.frame(Method = NA, Mean_F1 = NA)
-summ[1,] <- c("RPhenograph", round(pheno_F1, 3))
-summ[2,] <- c("flowMeans", round(flowmeans_F1, 3))
-summ[3,] <- c("flowPeaks", round(flowpeaks_F1, 3))
-kable(summ)
+summ1 <- data.frame(Method = NA, Mean_F1 = NA)
+summ1[1,] <- c("RPhenograph", round(pheno_F1, 3))
+summ1[2,] <- c("flowMeans", round(flowmeans_F1, 3))
+summ1[3,] <- c("flowPeaks", round(flowpeaks_F1, 3))
+kable(summ1)
 ```
 
 ```{r}
-summ <- data.frame(Method = NA, Seed_1 = NA, Seed_2 = NA, Seed_3 = NA, Seed_4 = NA, Seed_5 = NA)
-summ[1,] <- c("FlowSOM", round( c(FlowSoM_F1_1, FlowSoM_F1_2, FlowSoM_F1_3, FlowSoM_F1_4, FlowSoM_F1_5), 3))
-summ[2,] <- c("t-SNE + flowMeans", round( c(tSNE_fMeans_F1_1, tSNE_fMeans_F1_2, tSNE_fMeans_F1_3, tSNE_fMeans_F1_4, tSNE_fMeans_F1_5), 3))
-summ[3,] <- c("t-SNE + flowPeaks", round( c(tSNE_fPeaks_F1_1, tSNE_fPeaks_F1_2, tSNE_fPeaks_F1_3, tSNE_fPeaks_F1_4, tSNE_fPeaks_F1_5), 3))
-summ[4,] <- c("UMAP + flowMeans", round( c(UMAP_fMeans_F1_1, UMAP_fMeans_F1_2, UMAP_fMeans_F1_3, UMAP_fMeans_F1_4, UMAP_fMeans_F1_5), 3))
-summ[5,] <- c("UMAP + flowPeaks", round( c(UMAP_fPeaks_F1_1, UMAP_fPeaks_F1_2, UMAP_fPeaks_F1_3, UMAP_fPeaks_F1_4, UMAP_fPeaks_F1_5), 3))
-kable(summ)
+summ2 <- data.frame(Method = NA, Seed_1 = NA, Seed_2 = NA, Seed_3 = NA, Seed_4 = NA, Seed_5 = NA)
+summ2[1,] <- c("FlowSOM", round( c(FlowSoM_F1_1, FlowSoM_F1_2, FlowSoM_F1_3, FlowSoM_F1_4, FlowSoM_F1_5), 3))
+summ2[2,] <- c("t-SNE + flowMeans", round( c(tSNE_fMeans_F1_1, tSNE_fMeans_F1_2, tSNE_fMeans_F1_3, tSNE_fMeans_F1_4, tSNE_fMeans_F1_5), 3))
+summ2[3,] <- c("t-SNE + flowPeaks", round( c(tSNE_fPeaks_F1_1, tSNE_fPeaks_F1_2, tSNE_fPeaks_F1_3, tSNE_fPeaks_F1_4, tSNE_fPeaks_F1_5), 3))
+summ2[4,] <- c("UMAP + flowMeans", round( c(UMAP_fMeans_F1_1, UMAP_fMeans_F1_2, UMAP_fMeans_F1_3, UMAP_fMeans_F1_4, UMAP_fMeans_F1_5), 3))
+summ2[5,] <- c("UMAP + flowPeaks", round( c(UMAP_fPeaks_F1_1, UMAP_fPeaks_F1_2, UMAP_fPeaks_F1_3, UMAP_fPeaks_F1_4, UMAP_fPeaks_F1_5), 3))
+kable(summ2)
 ```
+
+```{r, eval = F}
+# export results
+write.table(cbind(params$file, summ1), 
+            file = "../results_f1/oneseed.txt", append = T, sep = "\t", row.names = F, col.names = F)
+write.table(cbind(params$file, summ2), 
+            file = "../results_f1/fiveseeds.txt", append = T, sep = "\t", row.names = F, col.names = F)
+```
+
 
 
