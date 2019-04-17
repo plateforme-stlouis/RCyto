@@ -9,9 +9,8 @@ output:
     toc_float: yes
 author: Anna Guadall
 params:
-  file: "ff_03_2019-04-16.fcs"
-  pheno: "pheno_02_2019-04-16"
-  labels: "labels_03_2019-04-16"
+  file: "ff_03_b_2019-04-16.fcs"
+  labels: "labels_03_b_2019-04-16"
   seed: 42
 ---
 
@@ -57,11 +56,6 @@ all_levels <- levels(all_labels)
 ```{r}
 set.seed(params$seed)
 seeds <- sample(1:1000, 5, replace = F)
-```
-
-```{r}
-# gave weird results on UMAP
-seeds <- c(543, 52, 70, 918, 910)
 ```
 
 # Functions
@@ -389,28 +383,35 @@ for(i in 1:length(seeds)){
 
 # Evaluation
 ```{r}
-summ1 <- data.frame(Method = NA, Mean_F1 = NA)
-summ1[1,] <- c("RPhenograph", round(pheno_F1, 3))
-summ1[2,] <- c("flowMeans", round(flowmeans_F1, 3))
-summ1[3,] <- c("flowPeaks", round(flowpeaks_F1, 3))
+summ1 <- data.frame(Mean_F1 = 0)
+summ1[1,] <- round(pheno_F1, 3)
+summ1[2,] <- round(flowmeans_F1, 3)
+summ1[3,] <- round(flowpeaks_F1, 3)
+
+rownames(summ1) <- c("RPhenograph", "flowMeans", "flowPeaks")
 kable(summ1)
 ```
 
 ```{r}
-summ2 <- data.frame(Method = NA, Seed_1 = NA, Seed_2 = NA, Seed_3 = NA, Seed_4 = NA, Seed_5 = NA)
-summ2[1,] <- c("FlowSOM", round( c(FlowSoM_F1_1, FlowSoM_F1_2, FlowSoM_F1_3, FlowSoM_F1_4, FlowSoM_F1_5), 3))
-summ2[2,] <- c("t-SNE + flowMeans", round( c(tSNE_fMeans_F1_1, tSNE_fMeans_F1_2, tSNE_fMeans_F1_3, tSNE_fMeans_F1_4, tSNE_fMeans_F1_5), 3))
-summ2[3,] <- c("t-SNE + flowPeaks", round( c(tSNE_fPeaks_F1_1, tSNE_fPeaks_F1_2, tSNE_fPeaks_F1_3, tSNE_fPeaks_F1_4, tSNE_fPeaks_F1_5), 3))
-summ2[4,] <- c("UMAP + flowMeans", round( c(UMAP_fMeans_F1_1, UMAP_fMeans_F1_2, UMAP_fMeans_F1_3, UMAP_fMeans_F1_4, UMAP_fMeans_F1_5), 3))
-summ2[5,] <- c("UMAP + flowPeaks", round( c(UMAP_fPeaks_F1_1, UMAP_fPeaks_F1_2, UMAP_fPeaks_F1_3, UMAP_fPeaks_F1_4, UMAP_fPeaks_F1_5), 3))
+summ2 <- data.frame(Seed_1 = 0, Seed_2 = 0, Seed_3 = 0, Seed_4 = 0, Seed_5 = 0)
+
+summ2[1,] <- round( c(FlowSoM_F1_1, FlowSoM_F1_2, FlowSoM_F1_3, FlowSoM_F1_4, FlowSoM_F1_5), 3)
+summ2[2,] <- round( c(tSNE_fMeans_F1_1, tSNE_fMeans_F1_2, tSNE_fMeans_F1_3, tSNE_fMeans_F1_4, tSNE_fMeans_F1_5), 3)
+summ2[3,] <- round( c(tSNE_fPeaks_F1_1, tSNE_fPeaks_F1_2, tSNE_fPeaks_F1_3, tSNE_fPeaks_F1_4, tSNE_fPeaks_F1_5), 3)
+summ2[4,] <- round( c(UMAP_fMeans_F1_1, UMAP_fMeans_F1_2, UMAP_fMeans_F1_3, UMAP_fMeans_F1_4, UMAP_fMeans_F1_5), 3)
+summ2[5,] <- round( c(UMAP_fPeaks_F1_1, UMAP_fPeaks_F1_2, UMAP_fPeaks_F1_3, UMAP_fPeaks_F1_4, UMAP_fPeaks_F1_5), 3)
+summ2$average_mean_F1 <- round(apply(summ2, 1, mean),3) # compute mean
+summ2$SD_F1 <- round(apply(summ2[,-ncol(summ2)], 1, sd),3) # compute SD
+
+rownames(summ2) <- c("FlowSOM", "t-SNE + flowMeans", "t-SNE + flowPeaks", "UMAP + flowMeans", "UMAP + flowPeaks")
 kable(summ2)
 ```
 
-```{r, eval = F}
+```{r, eval = T, cache = F}
 # export results
-write.table(cbind(params$file, summ1), 
+write.table(cbind(params$file, rownames(summ1), summ1), 
             file = "../results_f1/oneseed.txt", append = T, sep = "\t", row.names = F, col.names = F)
-write.table(cbind(params$file, summ2), 
+write.table(cbind(params$file, rownames(summ2), summ2), 
             file = "../results_f1/fiveseeds.txt", append = T, sep = "\t", row.names = F, col.names = F)
 ```
 
