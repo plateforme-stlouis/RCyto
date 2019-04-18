@@ -3,8 +3,8 @@ title: "POP generator"
 output: html_document
 params:
   pop_number: "06"
-  cells: 10000
-  seed: 23
+  cells: 50000
+  seed: 1239
 ---
 
 Like test_05, 50,000 cells
@@ -33,7 +33,7 @@ NKT_8 <-  c("CD3" = "high", "CD4" = "low",  "CD8" = "high", "CD56" = "high", "CD
 pheno <- as.data.frame(rbind(B, NK, T4, T8, NKT_NN, NKT_4, NKT_8))
 
 # Save the pheno table (cell types of INTEREST) object to a file
-saveRDS(pheno, paste("pheno", params$pop_number, Sys.Date(), sep = "_"))
+#saveRDS(pheno, paste("pheno", params$pop_number, Sys.Date(), sep = "_"))
 
 # UNKNOWN CELLS
 U1 <- c("CD3" = "low",  "CD4" = "low",  "CD8" = "low", "CD56" = "low", "CD19" = "low")
@@ -54,6 +54,8 @@ p <- 100/nrow(pheno)
 # or specify it here:
 pc <- c("B" = 15, "NK" = 6, "T4" = 44, "T8" = 17.5, "NKT_NN" = 2, "NKT_4" = 0.5, "NKT_8" = 1.5, 
         "U1" = 4.25, "U2" = 0.75, "U3" = 6.5, "U4" = 2)
+# save the proportions to a file
+saveRDS(pc, paste("props", params$pop_number, Sys.Date(), sep = "_"))
 
 # total number of cells
 n <- params$cells
