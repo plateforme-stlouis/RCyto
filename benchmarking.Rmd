@@ -1,6 +1,6 @@
 ---
 title: "Algorithm benchmarking script"
-subtitle: "Synthetic sample test_03"
+subtitle: "Synthetic sample test_05"
 output:
   html_document:
     number_sections: yes
@@ -9,8 +9,9 @@ output:
     toc_float: yes
 author: Anna Guadall
 params:
-  file: "ff_03_b_2019-04-16.fcs"
-  labels: "labels_03_b_2019-04-16"
+  file: "ff_05_2019-04-18.fcs"
+  labels: "labels_05_2019-04-18"
+  freqs: "props_05_2019-04-18"
   seed: 42
 ---
 
@@ -87,7 +88,7 @@ matching <- function(prediction, labels, c, all_levels){
   # Factorize matched predictions including the "unknown" level
   matched_preds <- factor(matched_preds, levels = all_levels)
   
-  matched <- list("preds" = matched_preds, "m" = m)
+  matched <- list("preds" = matched_preds, "m" = m, "t" = t)
   return(matched)
 }
 ```
@@ -115,7 +116,7 @@ mean_f1 <- function(cm, c){
 ```{r}
 # parameters
 colors <- grDevices::colorRampPalette(c("pink", "#00007F", "blue", "#007FFF", "cyan", "#7FFF7F", "yellow", "#FF7F00", "red"))
-method <- "FlowSoM"
+method <- "FlowSOM"
 
 for(i in 1:length(seeds)){
   # meta-clustering
@@ -139,8 +140,12 @@ for(i in 1:length(seeds)){
   
   # COMPUTING THE CONFUSION MATRIX AND OTHER PERFORMANCE MEASUREMENTS
   cm <- confusionMatrix(data = matched$preds, reference = all_labels)
-  # Print the confusion matrix:
+  # Print the unmatched cross table:
+  print(matched$t)
+  # Print the matched confusion matrix:
   print(cm$table)
+  # Store the confusion matrix:
+  assign(paste(method, "cm", i, sep = "_"), cm)
   
   # COMPUTE THE MEAN F1
   mf1 <- mean_f1(cm, c)
@@ -179,11 +184,12 @@ matched <- matching(pred$membership, labels, c, all_levels)
 pheno_pred <- matched$preds
 
 # COMPUTING THE CONFUSION MATRIX AND OTHER PERFORMANCE MEASUREMENTS
-# print it
-(cm <- confusionMatrix(data = matched$preds, reference = all_labels))$table
+# store and print
+print(matched$t)
+(pheno_cm <- confusionMatrix(data = matched$preds, reference = all_labels))$table
 
 # COMPUTE THE MEAN F1
-pheno_F1 <- mean_f1(cm, c)
+pheno_F1 <- mean_f1(pheno_cm, c)
 ```
 
 ## flowMeans
@@ -197,11 +203,12 @@ matched <- matching(pred@Labels[[1]], labels, c, all_levels)
 flowmeans_pred <- matched$preds
 
 # COMPUTING THE CONFUSION MATRIX AND OTHER PERFORMANCE MEASUREMENTS
-# print it
-(cm <- confusionMatrix(data = matched$preds, reference = all_labels))$table
+# store and print
+print(matched$t)
+(flowmeans_cm <- confusionMatrix(data = matched$preds, reference = all_labels))$table
 
 # COMPUTE THE MEAN F1
-flowmeans_F1 <- mean_f1(cm, c)
+flowmeans_F1 <- mean_f1(flowmeans_cm, c)
 ```
 
 ## flowPeaks
@@ -216,11 +223,12 @@ matched <- matching(pred$peaks.cluster, labels, c, all_levels)
 flowpeaks_pred <- matched$preds
 
 # COMPUTING THE CONFUSION MATRIX AND OTHER PERFORMANCE MEASUREMENTS
-# print it
-(cm <- confusionMatrix(data = matched$preds, reference = all_labels))$table
+# store and print
+print(matched$t)
+(flowpeaks_cm <- confusionMatrix(data = matched$preds, reference = all_labels))$table
 
 # COMPUTE THE MEAN F1
-flowpeaks_F1 <- mean_f1(cm, c)
+flowpeaks_F1 <- mean_f1(flowpeaks_cm, c)
 ```
 
 ## t-SNE
@@ -254,7 +262,10 @@ for(i in 1:length(seeds)){
   cm <- confusionMatrix(data = matched$preds, reference = all_labels)
   # Print the confusion matrix:
   cat(method, "\n")
+  print(matched$t)
   print(cm$table)
+  # Store the confusion matrix:
+  assign(paste(method, "cm", i, sep = "_"), cm)
   
   # COMPUTE THE MEAN F1
   mf1 <- mean_f1(cm, c)
@@ -264,7 +275,7 @@ for(i in 1:length(seeds)){
   
   # plot:
   p <- ggplot(as.data.frame(reduction), aes(x = tsne_1, y = tsne_2)) + 
-        geom_point(aes(color = eval(parse(text=name_pred)))) + ggtitle("flowMeans") +
+        geom_point(aes(color = matched$preds)) + ggtitle("flowMeans") +
         theme(legend.position = "bottom")
   grid.arrange(p, nrow = 1)
   
@@ -288,7 +299,10 @@ for(i in 1:length(seeds)){
   cm <- confusionMatrix(data = matched$preds, reference = all_labels)
   # Print the confusion matrix:
   cat(method, "\n")
+  print(matched$t)
   print(cm$table)
+  # Store the confusion matrix:
+  assign(paste(method, "cm", i, sep = "_"), cm)
   
   # COMPUTE THE MEAN F1
   mf1 <- mean_f1(cm, c)
@@ -297,7 +311,7 @@ for(i in 1:length(seeds)){
   
   # plot
   p <- ggplot(as.data.frame(reduction), aes(x = tsne_1, y = tsne_2)) + 
-        geom_point(aes(color = eval(parse(text=name_pred)))) + ggtitle("flowPeaks") +
+        geom_point(aes(color = matched$preds)) + ggtitle("flowPeaks") +
         theme(legend.position = "bottom")
   grid.arrange(p, nrow = 1)
 }
@@ -333,7 +347,10 @@ for(i in 1:length(seeds)){
   cm <- confusionMatrix(data = matched$preds, reference = all_labels)
   # Print the confusion matrix:
   cat(method, "\n")
+  print(matched$t)
   print(cm$table)
+  # Store the confusion matrix:
+  assign(paste(method, "cm", i, sep = "_"), cm)
   
   # COMPUTE THE MEAN F1
   mf1 <- mean_f1(cm, c)
@@ -342,7 +359,7 @@ for(i in 1:length(seeds)){
   
   # plot:
   p <- ggplot(as.data.frame(reduction$layout), aes(x = UMAP_1, y = UMAP_2)) + 
-        geom_point(aes(color = eval(parse(text=name_pred)))) + ggtitle("flowMeans") +
+        geom_point(aes(color = matched$preds)) + ggtitle("flowMeans") +
         theme(legend.position = "bottom")
   grid.arrange(p, nrow = 1)
   
@@ -366,7 +383,10 @@ for(i in 1:length(seeds)){
   cm <- confusionMatrix(data = matched$preds, reference = all_labels)
   # Print the confusion matrix:
   cat(method, "\n")
+  print(matched$t)
   print(cm$table)
+  # Store the confusion matrix:
+  assign(paste(method, "cm", i, sep = "_"), cm)
   
   # COMPUTE THE MEAN F1
   mf1 <- mean_f1(cm, c)
@@ -375,7 +395,7 @@ for(i in 1:length(seeds)){
   
   # plot
   p <- ggplot(as.data.frame(reduction$layout), aes(x = UMAP_1, y = UMAP_2)) + 
-        geom_point(aes(color = eval(parse(text=name_pred)))) + ggtitle("flowPeaks") +
+        geom_point(aes(color =  matched$preds)) + ggtitle("flowPeaks") +
         theme(legend.position = "bottom")
   grid.arrange(p, nrow = 1)
 }
@@ -383,6 +403,16 @@ for(i in 1:length(seeds)){
 
 # Evaluation
 ```{r}
+# t-SNE to show the results:
+reduction <-  cytof_dimReduction(data = ff@exprs, method = "tsne", tsneSeed = sum(seeds)) # different seed
+
+# Information about pop's frequencies
+percent <-  readRDS(params$freqs)
+```
+
+## RPhenograph, flowMeans, flowPeaks
+```{r}
+# mean F1 table
 summ1 <- data.frame(Mean_F1 = 0)
 summ1[1,] <- round(pheno_F1, 3)
 summ1[2,] <- round(flowmeans_F1, 3)
@@ -393,9 +423,42 @@ kable(summ1)
 ```
 
 ```{r}
+# Plot all F1 results
+class <- factor(all_levels[1:c], levels = levels(labels))
+method <- c("RPhenograph", "flowMeans", "flowPeaks")
+method <- factor(method, levels = method)
+df <- data.frame(class = rep(class,3), method = rep(method, each = c), 
+                 F1 = c(pheno_cm$byClass[1:c,"F1"], flowmeans_cm$byClass[1:c,"F1"], flowpeaks_cm$byClass[1:c,"F1"]),
+                 percent = rep(percent,3))
+ggplot(df, aes(class, F1)) + geom_point(aes(size = percent, color = percent)) + 
+  coord_flip() + ggtitle("RPhenograph") + ylim(0,1) + facet_wrap(.~method)
+
+```
+
+```{r}
+# preparing data for plotting:
+data <- cbind(as.data.frame(reduction), as.data.frame(labels), 
+              as.data.frame(pheno_pred), as.data.frame(flowmeans_pred), as.data.frame(flowpeaks_pred))
+```
+
+```{r, fig.width=7, fig.height=8}
+p1 <- cytof_clusterPlot(data = data, xlab = "tsne_1", ylab = "tsne_2", 
+                  cluster = "labels", sampleLabel = FALSE, labelSize = 4, title = "Cell labels")
+p2 <- cytof_clusterPlot(data = data, xlab = "tsne_1", ylab = "tsne_2", 
+                  cluster = "pheno_pred", sampleLabel = FALSE, labelSize = 4, title = "RPhenograph")
+p3 <- cytof_clusterPlot(data = data, xlab = "tsne_1", ylab = "tsne_2", 
+                  cluster = "flowmeans_pred", sampleLabel = FALSE, labelSize = 4, title = "flowMeans")
+p4 <- cytof_clusterPlot(data = data, xlab = "tsne_1", ylab = "tsne_2",
+                  cluster = "flowpeaks_pred", sampleLabel = FALSE, labelSize = 4, title = "flowPeaks")
+
+grid.arrange(p1, p2, p3, p4, nrow = 2)
+```
+
+## FlowSOM, t-SNE, UMAP
+```{r}
 summ2 <- data.frame(Seed_1 = 0, Seed_2 = 0, Seed_3 = 0, Seed_4 = 0, Seed_5 = 0)
 
-summ2[1,] <- round( c(FlowSoM_F1_1, FlowSoM_F1_2, FlowSoM_F1_3, FlowSoM_F1_4, FlowSoM_F1_5), 3)
+summ2[1,] <- round( c(FlowSOM_F1_1, FlowSOM_F1_2, FlowSOM_F1_3, FlowSOM_F1_4, FlowSOM_F1_5), 3)
 summ2[2,] <- round( c(tSNE_fMeans_F1_1, tSNE_fMeans_F1_2, tSNE_fMeans_F1_3, tSNE_fMeans_F1_4, tSNE_fMeans_F1_5), 3)
 summ2[3,] <- round( c(tSNE_fPeaks_F1_1, tSNE_fPeaks_F1_2, tSNE_fPeaks_F1_3, tSNE_fPeaks_F1_4, tSNE_fPeaks_F1_5), 3)
 summ2[4,] <- round( c(UMAP_fMeans_F1_1, UMAP_fMeans_F1_2, UMAP_fMeans_F1_3, UMAP_fMeans_F1_4, UMAP_fMeans_F1_5), 3)
@@ -407,7 +470,69 @@ rownames(summ2) <- c("FlowSOM", "t-SNE + flowMeans", "t-SNE + flowPeaks", "UMAP 
 kable(summ2)
 ```
 
-```{r, eval = T, cache = F}
+```{r}
+# Plot all F1 results
+
+# preparing the data
+class <- factor(all_levels[1:c], levels = levels(labels))
+method <-  c("FlowSOM", "t-SNE + flowMeans", "t-SNE + flowPeaks", "UMAP + flowMeans", "UMAP + flowPeaks")
+method <- factor(method, levels = method)
+conditions <- length(method) * length(seeds)
+
+# confusion matrices
+cm_list <- c("FlowSOM_cm", "tSNE_fMeans_cm", "tSNE_fPeaks_cm", "UMAP_fMeans_cm", "UMAP_fPeaks_cm")
+
+F1 <- c()
+for(i in cm_list){
+  j <- ls(pattern = i)
+  for(k in 1:length(j)){
+    for(l in 1:c){
+      F1 <-  c(F1, eval(parse(text=j[k]))$byClass[l,"F1"])
+    }
+  }
+}
+
+# preparing data frame
+df2 <- data.frame(class = rep(class, conditions), method = rep(method, each = c*length(seeds)), 
+                 F1 = F1, percent = rep(percent, conditions))
+
+# plotting
+ggplot(df2, aes(class, F1)) + geom_boxplot(aes(color = percent)) + 
+  coord_flip() + ggtitle("F1") + ylim(0,1) + facet_wrap(.~method)
+
+```
+
+```{r}
+# plot all predictions
+
+# matched predictions
+pred_list <- c("FlowSOM_pred", "tSNE_fMeans_pred", "tSNE_fPeaks_pred", "UMAP_fMeans_pred", "UMAP_fPeaks_pred")
+
+predictions <- c()
+method_i <- c()
+for(i in pred_list){
+  j <- ls(pattern = i)
+  for(k in 1:length(j)){
+    predictions <-  c(predictions, eval(parse(text=j[k])))
+    method_i <- c(method_i, j[k])
+  }
+}
+
+# preparing data frame
+df3 <- data.frame(tsne_1 = rep(reduction[,1], length(pred_list)*length(seeds)), 
+                  tsne_2 = rep(reduction[,2], length(pred_list)*length(seeds)),
+                  method = rep(method_i, each = length(labels)), 
+                  predictions = predictions)
+```
+
+```{r, fig.width=10, fig.height=15}
+# plotting
+ggplot(df3, aes(x = tsne_1, y = tsne_2)) + geom_point(aes(color = factor(predictions))) + 
+  facet_wrap(.~method)
+```
+
+
+```{r, eval = F, cache = F}
 # export results
 write.table(cbind(params$file, rownames(summ1), summ1), 
             file = "../results_f1/oneseed.txt", append = T, sep = "\t", row.names = F, col.names = F)
