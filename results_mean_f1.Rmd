@@ -1,0 +1,51 @@
+---
+title: "Results mean F1"
+author: "Anna Guadall"
+output:
+  html_document:
+    number_sections: yes
+    theme: journal
+    toc: yes
+    toc_float: yes 
+  pdf_document:
+    number_sections: yes
+    toc: yes
+    toc_depth: 2  
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, message = FALSE, cache = F)
+```
+
+```{r libraries, message=FALSE}
+library(ggplot2)
+library(gridExtra)
+library(knitr)
+library(kableExtra)
+```
+
+```{r}
+one <-  read.table("oneseed.txt", sep = "\t", header = T)
+kable(one) %>%
+  kable_styling(bootstrap_options = c("striped", "hover"))
+```
+
+```{r}
+five <- read.table("fiveseeds.txt", sep = "\t", header = T) 
+kable(five)  %>%
+  kable_styling(bootstrap_options = c("striped", "hover"))
+```
+
+```{r}
+ggplot(one, aes(File, Mean_F1)) + geom_point(aes(color = Method, shape = Method), size =3) +
+  scale_shape_manual(values = c(0:4)) +
+  theme(legend.position = "right", axis.text.x = element_text(angle=45, hjust = 1))
+```
+
+
+```{r}
+ggplot(five, aes(File, Average_mean_F1)) + geom_point(aes(color = Method, shape = Method), size =3) +
+  scale_shape_manual(values = c(0:4)) +
+  theme(legend.position = "right", axis.text.x = element_text(angle=45, hjust = 1))
+```
+
