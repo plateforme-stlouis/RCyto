@@ -24,7 +24,7 @@ browseVignettes("flowCore")
 
 Find [here](https://www.bioconductor.org/packages/devel/bioc/vignettes/flowCore/inst/doc/HowTo-flowCore.pdf) a newr version of the vignette.
 
-This document summarizes the contents of the vignette and reproduces the proposed case studies.
+This document summarizes the contents of the vignette and reproduces most of the proposed case studies.
 
 # Representing Flow Cytometry Data
 ## The _flowFrame_ Class
@@ -81,7 +81,7 @@ keyword(x,c("$P1E", "$P2E", "$P3E", "$P4E", "$P5E", "$P6E", "$P7E", "$P8E"))
 #### Linearize
 Reading the fcs file with the default `transformation = "linearize"` option will convert all the parameters to the "0,0" (linear) format:
 ```{r}
-summary(read.FCS(file.name, tra))
+summary(read.FCS(file.name, transformation = "linearize"))
 ```
 
 #### linearize-with-PnG-scaling
@@ -797,7 +797,7 @@ getTotal(gs[[1]], "NonDebris")
 getProp(gs[[1]], "NonDebris")
 ```
 
-## Adding more gates:
+
 
 
 
