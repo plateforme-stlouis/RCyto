@@ -69,7 +69,7 @@ CONCLUSIONS: CytoCompare is a flexible analysis pipeline for comparing the pheno
   abstract = {Recent technological developments in high-dimensional flow cytometry and mass cytometry (CyTOF) have made it possible to detect expression levels of dozens of protein markers in thousands of cells per second, allowing cell populations to be characterized in unprecedented detail. Traditional data analysis by "manual gating" can be inefficient and unreliable in these high-dimensional settings, which has led to the development of a large number of automated analysis methods. Methods designed for unsupervised analysis use specialized clustering algorithms to detect and define cell populations for further downstream analysis. Here, we have performed an up-to-date, extensible performance comparison of clustering methods for high-dimensional flow and mass cytometry data. We evaluated methods using several publicly available data sets from experiments in immunology, containing both major and rare cell populations, with cell population identities from expert manual gating as the reference standard. Several methods performed well, including FlowSOM, X-shift, PhenoGraph, Rclusterpp, and flowMeans. Among these, FlowSOM had extremely fast runtimes, making this method well-suited for interactive, exploratory analysis of large, high-dimensional data sets on a standard laptop or desktop computer. These results extend previously published comparisons by focusing on high-dimensional data and including new methods developed for CyTOF data. R scripts to reproduce all analyses are available from GitHub (https://github.com/lmweber/cytometry-clustering-comparison), and pre-processed data files are available from FlowRepository (FR-FCM-ZZPH), allowing our comparisons to be extended to include new clustering methods and reference data sets. © 2016 The Authors. Cytometry Part A published by Wiley Periodicals, Inc. on behalf of ISAC.},
   annote   = {found best: FlowSOM and X-shift},
   doi      = {10.1002/cyto.a.23030},
-  file     = {:weber_comparison_2016.pdf:PDF},
+  file     = {:weber_comparison_2016.pdf:PDF;:weber_comparison_2016_supp.pdf:PDF},
   keywords = {Humans, Algorithms, bioinformatics, Cluster Analysis, Computational Biology, Flow Cytometry, mass cytometry, cell populations, clustering, CyTOF, F1 score, flow cytometry, high-dimensional, manual gating, single-cell, Spectrometry, Mass, Matrix-Assisted Laser Desorption-Ionization, rank2},
   language = {eng},
   pmid     = {27992111},
@@ -198,7 +198,7 @@ CONCLUSIONS: CytoCompare is a flexible analysis pipeline for comparing the pheno
   month     = {jul},
   doi       = {10.1016/j.ymeth.2015.05.008},
   file      = {:Diggins_methods_2015.pdf:PDF},
-  keywords  = {rank1},
+  keywords  = {rank3},
   publisher = {Elsevier {BV}},
 }
 
@@ -727,4 +727,56 @@ CONCLUSIONS: CytoCompare is a flexible analysis pipeline for comparing the pheno
   publisher = {Oxford University Press ({OUP})},
 }
 
-@Comment{jabref-meta: databaseType:bibtex;}
+@Article{Herzenberg_interpreting_2006,
+  author    = {Leonore A Herzenberg and James Tung and Wayne A Moore and Leonard A Herzenberg and David R Parks},
+  title     = {Interpreting flow cytometry data: a guide for the perplexed},
+  journal   = {Nature Immunology},
+  year      = {2006},
+  volume    = {7},
+  number    = {7},
+  pages     = {681--685},
+  month     = {jul},
+  doi       = {10.1038/ni0706-681},
+  publisher = {Springer Nature},
+}
+
+@Article{Parks_new_2006,
+  author    = {David R. Parks and Mario Roederer and Wayne A. Moore},
+  title     = {A new {\textquotedblleft}Logicle{\textquotedblright} display method avoids deceptive effects of logarithmic scaling for low signals and compensated data},
+  journal   = {Cytometry Part A},
+  year      = {2006},
+  volume    = {69A},
+  number    = {6},
+  pages     = {541--551},
+  doi       = {10.1002/cyto.a.20258},
+  publisher = {Wiley},
+}
+
+@Article{Ding_densitycut_2016,
+  author    = {Jiarui Ding and Sohrab Shah and Anne Condon},
+  title     = {{densityCut}: an efficient and versatile topological approach for automatic clustering of biological data},
+  journal   = {Bioinformatics},
+  year      = {2016},
+  volume    = {32},
+  number    = {17},
+  month     = {apr},
+  pages     = {2567--2576},
+  doi       = {10.1093/bioinformatics/btw227},
+  publisher = {Oxford University Press ({OUP})},
+}
+
+@Article{Linderman_efficient_2017,
+  author    = {George C. Linderman and Manas Rachh and Jeremy G. Hoskins and Stefan Steinerberger and Yuval Kluger},
+  title     = {Fast interpolation-based t-{SNE} for improved visualization of single-cell {RNA}-seq data},
+  journal   = {Nature Methods},
+  year      = {2017},
+  volume    = {16},
+  number    = {3},
+  month     = {feb},
+  pages     = {243--245},
+  doi       = {10.1038/s41592-018-0308-4},
+  comment   = {C++, Python wrapper},
+  publisher = {Springer Nature},
+}
+
+@Comment{jabref-meta: databaseType:biblatex;}
