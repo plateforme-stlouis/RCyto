@@ -1,6 +1,7 @@
 ---
 title: "Installing packages for cytometry analysis"
 output: html_document
+bibliography: cyto.bib
 ---
 
 ```{r setup, include=FALSE}
@@ -36,6 +37,7 @@ The pdf on vignettes has date January 4, 2019. This vignette has several errors.
 
 ### ggcyto
 A ggplot2 graphics implementation.
+[@Van_ggcyto_2018]
 ```{r}
 BiocManager::install("ggcyto", version = "3.8")
 ```
@@ -44,6 +46,7 @@ browseVignettes("ggcyto")
 ```
 
 ### flowWorkspaceData
+A data package containing two flowJo, one diva xml workspace and the associated fcs files as well as three GatingSets for testing the flowWorkspace, openCyto and CytoML packages.
 ```{r}
 BiocManager::install("flowWorkspaceData", version = "3.8")
 ```
@@ -82,7 +85,7 @@ browseVignettes("flowMap")
 ```
 
 ### CytoML
-A GatingML Interface for Cross Platform Cytometry Data Sharing
+A GatingML Interface for Cross Platform Cytometry Data Sharing [@Finak_cytoml_2018]
 ```{r}
 BiocManager::install("CytoML", version = "3.8")
 ```
@@ -131,7 +134,7 @@ browseVignettes("SamSPECTRAL")
 ```
 
 ### Cytofast
-Quickly visualizing and analyzing the output of Cytosplore; software used to characterizes and cluster immune subsets from flow or mass cytometry (CyTOF) data.  
+Quickly visualizing and analyzing the output of Cytosplore; software used to characterize and cluster immune subsets from flow or mass cytometry (CyTOF) data.  
 IMAGING FOR CLUSTERS  
 http://www.bioconductor.org/packages/devel/bioc//vignettes/cytofast/inst/doc/spitzer.html  
 https://www.sciencedirect.com/science/article/pii/S200103701830059X
