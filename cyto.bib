@@ -162,15 +162,15 @@ CONCLUSIONS: CytoCompare is a flexible analysis pipeline for comparing the pheno
   publisher = {Wiley},
 }
 
-@Article{kimball_beginner_2017,
+@Article{kimball_beginner_2018,
   author    = {Abigail K. Kimball and Lauren M. Oko and Bonnie L. Bullock and Raphael A. Nemenoff and Linda F. van Dyk and Eric T. Clambey},
   title     = {A Beginner's Guide to Analyzing and Visualizing Mass Cytometry Data},
   journal   = {The Journal of Immunology},
   year      = {2018},
   volume    = {200},
   number    = {1},
-  pages     = {3--22},
   month     = {dec},
+  pages     = {3--22},
   doi       = {10.4049/jimmunol.1701494},
   keywords  = {rank2},
   publisher = {The American Association of Immunologists},
@@ -252,12 +252,13 @@ CONCLUSIONS: CytoCompare is a flexible analysis pipeline for comparing the pheno
   title     = {{CytoBinning}: Immunological insights from multi-dimensional data},
   journal   = {{PLOS} {ONE}},
   year      = {2018},
+  editor    = {Niklas K. Björkström},
   volume    = {13},
   number    = {10},
-  pages     = {e0205291},
   month     = {oct},
+  pages     = {e0205291},
   doi       = {10.1371/journal.pone.0205291},
-  editor    = {Niklas K. Björkström},
+  comment   = {2D scatter plot representation},
   file      = {:Shen_cytobinning_2018.pdf:PDF},
   keywords  = {rank1},
   publisher = {Public Library of Science ({PLoS})},
@@ -283,12 +284,13 @@ CONCLUSIONS: CytoCompare is a flexible analysis pipeline for comparing the pheno
   title     = {{GateFinder}: projection-based gating strategy optimization for flow and mass cytometry},
   journal   = {Bioinformatics},
   year      = {2018},
+  editor    = {Jonathan Wren},
   volume    = {34},
   number    = {23},
-  pages     = {4131--4133},
   month     = {may},
+  pages     = {4131--4133},
   doi       = {10.1093/bioinformatics/bty430},
-  editor    = {Jonathan Wren},
+  comment   = {supervised feature-selection},
   keywords  = {rank1},
   publisher = {Oxford University Press ({OUP})},
 }
@@ -714,7 +716,7 @@ CONCLUSIONS: CytoCompare is a flexible analysis pipeline for comparing the pheno
 }
 
 @Article{ONeill_flowtype_2014,
-  author    = {K. O{\textquotesingle}Neill and A. Jalali and N. Aghaeepour and H. Hoos and R. R. Brinkman},
+  author    = {K. ONeill and A. Jalali and N. Aghaeepour and H. Hoos and R. R. Brinkman},
   title     = {Enhanced {flowType}/{RchyOptimyx}: a Bioconductor pipeline for discovery in high-dimensional cytometry data},
   journal   = {Bioinformatics},
   year      = {2014},
@@ -777,6 +779,64 @@ CONCLUSIONS: CytoCompare is a flexible analysis pipeline for comparing the pheno
   doi       = {10.1038/s41592-018-0308-4},
   comment   = {C++, Python wrapper},
   publisher = {Springer Nature},
+}
+
+@Article{Van_ggcyto_2018,
+  author    = {Phu Van and Wenxin Jiang and Raphael Gottardo and Greg Finak},
+  title     = {{ggCyto}: next generation open-source visualization software for cytometry},
+  journal   = {Bioinformatics},
+  year      = {2018},
+  editor    = {Jonathan Wren},
+  volume    = {34},
+  number    = {22},
+  month     = {jun},
+  pages     = {3951--3953},
+  doi       = {10.1093/bioinformatics/bty441},
+  publisher = {Oxford University Press ({OUP})},
+}
+
+@Article{Finak_cytoml_2018,
+  author    = {Greg Finak and Wenxin Jiang and Raphael Gottardo},
+  title     = {{CytoML} for cross-platform cytometry data sharing},
+  journal   = {Cytometry Part A},
+  year      = {2018},
+  volume    = {93},
+  number    = {12},
+  month     = {dec},
+  pages     = {1189--1196},
+  doi       = {10.1002/cyto.a.23663},
+  publisher = {Wiley},
+}
+
+
+@Manual{ellis_flowcore_2019,
+title = {flowCore: flowCore: Basic structures for flow cytometry data},
+author = {B Ellis and Perry Haaland and Florian Hahne and Nathan {Le Meur} and Nishant Gopalakrishnan and Josef Spidlen and Mike Jiang and Greg Finak},
+year = {2019},
+note = {R package version 1.48.1},
+}
+
+@Manual{finak_flowworkspace_2019,
+    title = {flowWorkspace: Infrastructure for representing and interacting with gated and
+ungated cytometry data sets.},
+    author = {Greg Finak and Mike Jiang},
+    year = {2019},
+    note = {R package version 3.30.2},
+  }
+
+@Misc{Monaco_flowai_2017,
+  author    = {Gianni Monaco, Chen Hao},
+  title     = {flowAI},
+  year      = {2017},
+  doi       = {10.18129/b9.bioc.flowai},
+  publisher = {Bioconductor},
+}
+
+@Article{fletez_flowclean_2019,
+    author = {Kipper Fletez-Brant and Josef Spidlen and Ryan R Brinkman and Mario Roederer and Pratip K Chattopadhyay},
+    title = {{flowClean}: Automated identification and removal of fluorescence anomalies in flow cytometry data},
+    journal = {Cytometry Part A},
+    year = {2016},
 }
 
 @Comment{jabref-meta: databaseType:biblatex;}
