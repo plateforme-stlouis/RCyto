@@ -93,10 +93,10 @@ matching <- function(prediction, labels, c, all_levels){
 }
 ```
 
-In order to compare performances, we will use the F1 score, which is the harmonic average of the precision and recall. The F1 value ranges from 0 (worst performance) to 1 (best performance). One F1 value is computed for every cell type. The mean F1 will be computed for every method in order to give a global performance measure. There are to facts that must be taken into account:
+In order to compare performances, we will use the F1 score, which is the harmonic average of the precision and recall. The F1 value ranges from 0 (worst performance) to 1 (best performance). One F1 value is computed for every cell type. The mean F1 will be computed for every method in order to give a global performance measure. There are two facts that must be taken into account:
 
 1. The "unknown" class should not be used, as there is not such a class in the original sample.
-2. There is no possible to compute the F1 score for the unmatched classes. In this case, the result is "NA". Thus, we are going to replace NAs by zeroes.
+2. It is no possible to compute the F1 score for the unmatched classes. In this case, the result is "NA". Thus, we are going to replace NAs by zeroes.
 
 Computing the mean F1:
 ```{r}
@@ -404,7 +404,11 @@ for(i in 1:length(seeds)){
 # Evaluation
 ```{r}
 # t-SNE to show the results:
-reduction <-  cytof_dimReduction(data = ff@exprs, method = "tsne", tsneSeed = sum(seeds)) # different seed
+reduction <- cytof_dimReduction(data = ff@exprs, method = "tsne", tsneSeed = sum(seeds)) # different seed
+
+# UMAP to show the results:
+red_umap <-  umap(ff@exprs, random_state = sum(seeds)) # different seed
+colnames(red_umap$layout) <- c("UMAP_1", "UMAP_2")
 
 # Information about pop's frequencies
 percent <-  readRDS(params$freqs)
@@ -432,11 +436,10 @@ df <- data.frame(class = rep(class,3), method = rep(method, each = c),
                  percent = rep(percent,3))
 ggplot(df, aes(class, F1)) + geom_point(aes(size = percent, color = percent)) + 
   coord_flip() + ggtitle("RPhenograph") + ylim(0,1) + facet_wrap(.~method)
-
 ```
 
 ```{r}
-# preparing data for plotting:
+# preparing data for plotting on t-SNE:
 data <- cbind(as.data.frame(reduction), as.data.frame(labels), 
               as.data.frame(pheno_pred), as.data.frame(flowmeans_pred), as.data.frame(flowpeaks_pred))
 ```
@@ -449,6 +452,25 @@ p2 <- cytof_clusterPlot(data = data, xlab = "tsne_1", ylab = "tsne_2",
 p3 <- cytof_clusterPlot(data = data, xlab = "tsne_1", ylab = "tsne_2", 
                   cluster = "flowmeans_pred", sampleLabel = FALSE, labelSize = 4, title = "flowMeans")
 p4 <- cytof_clusterPlot(data = data, xlab = "tsne_1", ylab = "tsne_2",
+                  cluster = "flowpeaks_pred", sampleLabel = FALSE, labelSize = 4, title = "flowPeaks")
+
+grid.arrange(p1, p2, p3, p4, nrow = 2)
+```
+
+```{r}
+# preparing data for plotting on UMAP:
+data <- cbind(as.data.frame(red_umap$layout), as.data.frame(labels), 
+              as.data.frame(pheno_pred), as.data.frame(flowmeans_pred), as.data.frame(flowpeaks_pred))
+```
+
+```{r, fig.width=7, fig.height=8}
+p1 <- cytof_clusterPlot(data = data, xlab = "UMAP_1", ylab = "UMAP_2", 
+                  cluster = "labels", sampleLabel = FALSE, labelSize = 4, title = "Cell labels")
+p2 <- cytof_clusterPlot(data = data, xlab = "UMAP_1", ylab = "UMAP_2", 
+                  cluster = "pheno_pred", sampleLabel = FALSE, labelSize = 4, title = "RPhenograph")
+p3 <- cytof_clusterPlot(data = data, xlab = "UMAP_1", ylab = "UMAP_2", 
+                  cluster = "flowmeans_pred", sampleLabel = FALSE, labelSize = 4, title = "flowMeans")
+p4 <- cytof_clusterPlot(data = data, xlab = "UMAP_1", ylab = "UMAP_2",
                   cluster = "flowpeaks_pred", sampleLabel = FALSE, labelSize = 4, title = "flowPeaks")
 
 grid.arrange(p1, p2, p3, p4, nrow = 2)
@@ -526,11 +548,19 @@ df3 <- data.frame(tsne_1 = rep(reduction[,1], length(pred_list)*length(seeds)),
 ```
 
 ```{r, fig.width=10, fig.height=15}
-# plotting
+# plot on tSNE
 ggplot(df3, aes(x = tsne_1, y = tsne_2)) + geom_point(aes(color = factor(predictions))) + 
   facet_wrap(.~method)
 ```
 
+```{r, fig.width=10, fig.height=15}
+# plot on UMAP
+df3 <- cbind(df3, umap_1 = rep(red_umap$layout[,1], length(pred_list)*length(seeds)), 
+                  umap_2 = rep(red_umap$layout[,2], length(pred_list)*length(seeds)))
+
+ggplot(df3, aes(x = umap_1, y = umap_2)) + geom_point(aes(color = factor(predictions))) + 
+  facet_wrap(.~method)
+```
 
 ```{r, eval = F, cache = F}
 # export results
