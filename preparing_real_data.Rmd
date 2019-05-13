@@ -1,0 +1,228 @@
+---
+title: "real_02"
+output: html_document
+params:
+  experience: "real_02"
+  sample: 3
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(flowWorkspace)
+```
+
+# Importing data from FlowJo workspace
+Open FlowJo workspace
+```{r}
+(ws <-  openWorkspace("real_02.wsp"))
+```
+
+# Parsing the workspace: GATING SET
+```{r}
+gs <-  parseWorkspace(ws, name = 2, sampNloc="sampleNode") # 1: All Samples, 2: group
+```
+
+```{r}
+gs@data
+```
+
+Gating strategy:
+```{r}
+plot(gs)
+```
+
+# Extracting the data from one sample
+The sample is defined in the parameters:
+```{r}
+(s <- params$sample)
+```
+
+```{r}
+getSamples(ws)[s,]
+```
+
+```{r}
+getSamples(ws)[s,"name"]
+```
+
+Data:
+```{r}
+gs@data[[s]]
+```
+
+```{r}
+summary(gs@data[[s]])
+```
+
+Counts:
+```{r}
+getPopStats(gs[[s]])
+```
+
+Variation between `FlowJo` and `openCyto` counts:
+```{r}
+plotPopCV(gs[[s]])
+```
+
+(The `openCyto`package is included in `flowWorkspace`).
+
+Extracting the data
+```{r}
+data <- exprs(gs@data[[s]])
+# Or, equivalently:
+# data  <- getData(gs[[s]])
+nrow(data)
+```
+
+## Extracting cell labels
+Preparing the data frame
+```{r}
+head(data)
+```
+
+We are just interested in columns 7-11
+```{r}
+data <- data[,7:11]
+data <- as.data.frame(data)
+head(data)
+```
+
+Getting the nodes (or the populations):
+```{r}
+(nodes <- getNodes(gs, path = "auto"))
+```
+
+We can extract the cells labels (indices) resulting from applying the gates imported from `FlowJo` (there might be slight differences). 
+For example:
+```{r}
+nkt <- getIndices(gs[[s]], nodes[6])
+table(nkt)
+```
+
+
+Let's first see which cell populations we want to label:
+
+```{r}
+getNodes(gs)
+```
+
+## CELLS
+We are just interested in viable, single cells lymphocytes (no monocytes): node 5.
+```{r}
+nodes[5]
+cells <- getIndices(gs[[3]], nodes[5])
+length(cells)
+table(cells)
+```
+
+Let's tag them as "lymphocytes". The rest, will be "other_events".
+```{r}
+data$cells <-  "other_events" 
+data$cells <- as.factor(ifelse(cells, "lymphocytes", data$cells))
+data$cells <- ifelse(cells, "lymphocytes", data$cells)
+table(data$cells)
+```
+
+## LABELS
+This will be the SUBPOPULATIONS.  
+
+All the ungated cells will be tagged as "outliers".
+```{r}
+data$labels <- "outliers"
+```
+
+Naming the labels:
+```{r}
+label_names <- c("7" = "NKT_4", "8" = "NKT_DP", "9" = "NKT_8", "10" = "NKT_DN",
+                 "12" = "NK_4", "13" = "NK_DP", "14" = "NK_8", "15" = "NK_DN",
+                 "17" = "T_cells_4", "18" = "T_cells_DP", "19" = "T_cells_8", "20" = "T_cells_DN",
+                 "23" = "B_4", "24" = "B_DP", "25" = "B_8", "26" = "B_DN",
+                 "28" = "NO_B_4", "29" = "NO_B_DP", "30" = "NO_B_8", "31" = "NO_B_DN")
+names(label_names)
+```
+
+Labelling:
+```{r}
+for(i in names(label_names)){
+    indices <- getIndices(gs[[s]], nodes[as.numeric(i)])
+    # if index for node i is TRUE, data$label takes label_name[i]
+    # otherwise, it remains unchanged
+    data$labels <- ifelse(indices, label_names[[i]], data$labels)
+}
+
+data$labels <-  as.factor(data$labels)
+table(data$labels)
+```
+
+## META-LABELS
+We can now group the labels. For instance, we will follow the gating logic:
+```{r}
+# Empty column
+data$metalabels <- "outliers"
+
+# Naming the meta-labels and the patterns that will be used to define them
+metalabels_list <- c("NKT", "NK", "T", "B", "NO_B")
+patterns_list <- c("NKT_", "NK_", "T_cells_", "B_", "NO_B_")
+
+for(i in 1:length(metalabels_list)){
+  data$metalabels <- ifelse(grepl(patterns_list[i], data$labels), metalabels_list[i], data$metalabels)
+}
+
+data$metalabels <- as.factor(data$metalabels)
+table(data$metalabels)
+```
+
+```{r}
+table(data$labels, data$metalabels)
+```
+
+# Export data 
+## Conversion to `FlowFrame` class objects
+```{r}
+head(data)
+```
+
+Replacing the fluorophores by the markers:
+```{r}
+colnames(data)
+```
+
+```{r}
+colnames(data)[1:5] <-  c("CD3", "CD4", "CD8", "CD56", "CD19")
+colnames(data)
+```
+
+```{r}
+library(flowCore)
+
+# Just the live, single-cell lymphocytes!
+ff <- new("flowFrame", exprs = as.matrix(data[data$cells == "lymphocytes", 1:5])) # 1:5 markers, w/o the labels
+summary(ff)
+```
+
+```{r}
+library(ggcyto)
+autoplot(ff[], colnames(data)[4], colnames(data)[1])
+```
+
+## Export to .fcs
+```{r, eval = T}
+write.FCS(ff, paste("ff_", params$experience, "_", getSamples(ws)[s,"name"], ".fcs", sep = ""))
+```
+
+## Save the labels and meta-labels
+```{r}
+saveRDS(data[data$cells == "lymphocytes", "labels"],
+        paste("labels_", params$experience, "_", getSamples(ws)[s,"name"], sep = "")) 
+saveRDS(data[data$cells == "lymphocytes", "metalabels"],
+        paste("metalabels_", params$experience, "_", getSamples(ws)[s,"name"], sep = "")) 
+```
+
+```{r}
+closeWorkspace(ws)
+```
+
+
