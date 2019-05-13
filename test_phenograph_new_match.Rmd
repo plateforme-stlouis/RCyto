@@ -73,7 +73,7 @@ table(rphe$membership)
 ```
 
 
-# Evaluating the performance
+# Evaluating the performance (NEW MATCHING PROCEDURE)
 Matching the labels with the predictions:
 
 ```{r, message=FALSE}
@@ -81,105 +81,99 @@ Matching the labels with the predictions:
 (t <- table(rphe$membership, labels))
 ```
 
-```{r}
-(max_values <- apply(t, 2, max))
-```
-
-```{r}
+Each cluster is assigned to the label for which it contains a higher number of cells. Several clusters can be assigned to the same label:
+```{r, echo = T}
+# Finding and sorting row maximums:
+max_values <- apply(t, 1, max)
 (sorted_max_values <- sort(max_values))
 ```
+\  
 
-Finding the maximum number of each cell type (columns) on each cluster (rows):
-```{r}
-(m <- apply(t, 2, which.max))
+```{r, echo = T}
+# Finding the cell population (columns) 
+# with a higher number of cells for each cluster (rows):
+(m <- apply(t, 1, which.max)) 
+```
+\  
+
+```{r, echo = T}
+table(m)
 ```
 
-Replacing the numbers of the clusters by the names of the cell types:
-```{r}
+Matching cell labels and clusters:
+```{r, echo = T}
+# Empty list 
+matched_preds <- rep("NA", length(rphe$membership))
+
+# Number of predicted clusters
+nc <- length(m)
+
+# Replacing the numbers of the clusters by the names of the cell types:
 for(i in 1:length(rphe$membership)){
-  for(j in 1:c){
-    n <- names(sorted_max_values)[j] # we compare to the sorted names
-     if(rphe$membership[i] == m[n]){ 
-        rphe$membership[i] <- n
+  for(j in 1:nc){
+    if(rphe$membership[i] == names(sorted_max_values)[j]){
+      matched_preds[i] <- levels(labels)[m[[names(sorted_max_values)[j]]]] 
+        # m : list of the more represented cell labels for every cluster
+        # m[[names(sorted_max_values)[j]]] : 
+            # Label index assigned for that cluster
+        # levels(labels)[m[[names(sorted_max_values)[j]]]] : 
+            # Label name assigned for that index
     }
   }
 }
-
-table(rphe$membership, labels)
+  
+# Factorize matched predictions
+matched_preds <- factor(matched_preds, levels = levels(labels))
+table(matched_preds, labels)
 ```
-
-## NEW MATCHING PROCEDURE
-In previous work, all the unassigned clusters would have been labelled as unknowns. Now, we would like now to assign the _extra clusters_ to their corresponding populations. In this case, we can easily see that the first 5 rows of the cross table (predicted clusters 7, 9, 11, 12 and 13) they all belong to the T4 population. Some cells have been classed incorrectly (for example, 22 cells from cluster 12 actually belong to the U3 population). Thus, we will assign each _extra cluster_ to the population with the higher amount of correctly classified cells. I do not want to lose the _extra clusters_ on `rphe$membership`, thus, I will create another element:
-
-```{r}
-main_match <- rphe$membership
-```
-
-Which clusters are not in the labels list?
-```{r}
-library(Hmisc) # includes %nin% operator (not in)
-(extras <-  names(table(rphe$membership[rphe$membership %nin% labels])))
-```
-
-```{r}
-(t_ext <-  t[extras,])
-```
-
-Finding and sorting de maxs:
-```{r}
-(ext_max_values <- apply(t_ext, 1, max))
-```
-
-```{r}
-(sorted_ext_max_values <- sort(ext_max_values))
-```
-
-Finding the cell population (columns) which a higher number of cells on each extra cluster (rows):
-```{r}
-(m_ext <- apply(t_ext, 1, which.max))
-```
-
-Factorizing
-```{r}
-extras <- as.factor(extras)
-levels(extras)
-```
-
-Replacing the numbers of the _extra clusters_ by the names of the cell types:
-```{r}
-for(i in 1:length(rphe$membership)){
-  for(j in 1:length(extras)){
-      if(rphe$membership[i] == names(sorted_ext_max_values)[j]){
-        main_match[i] <- levels(labels)[m_ext[[names(sorted_ext_max_values)[j]]]] 
-    }
-  }
-}
-
-table(main_match, labels)
-```
-
 
 Computing the confusion matrix and other performance measurements:
 ```{r}
 library(caret)
-main_match <- factor(main_match, levels = levels(labels))
-(cm <- confusionMatrix(data = main_match, reference = labels))
+(cm <- confusionMatrix(data = matched_preds, reference = labels))
 ```
 
 ```{r}
 cm$byClass
 ```
 
+# Which populations have been split?
+```{r, echo = T}
+(table_maxs <- table(m))
+```
 
 ```{r}
-dades <- cbind(as.data.frame(ff@exprs), labels, main_match)
-ggplot(dades, aes(x = CD3, y = CD19, col = labels, shape = main_match))  + 
+table_maxs[table_maxs>1]
+```
+
+```{r}
+(split_list <-  names(table_maxs[table_maxs>1]))
+```
+
+Which population is that?
+```{r}
+# split_list is character
+split_list <-  as.numeric(split_list)
+
+levels(labels)[split_list] 
+```
+
+How many clusters have been predicted for this population?
+```{r}
+table_maxs[[split_list]]
+```
+
+# Visualization
+
+```{r}
+dades <- cbind(as.data.frame(ff@exprs), labels, matched_preds)
+ggplot(dades, aes(x = CD3, y = CD19, col = labels, shape = matched_preds))  + 
   geom_point(size = 3) + scale_shape_manual(values = c(0:10)) +
   theme(legend.position = "bottom")
 ```
 
 ```{r}
-ggplot(dades, aes(x = CD8, y = CD56, col = labels, shape = main_match))  + 
+ggplot(dades, aes(x = CD8, y = CD56, col = labels, shape = matched_preds))  + 
   geom_point(size = 3) + scale_shape_manual(values = c(0:10)) +
   theme(legend.position = "bottom")
 ```
