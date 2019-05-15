@@ -1,8 +1,9 @@
 ---
-title: "real_02"
+title: "real_02 downsample 3 (temoin 2)"
 output: html_document
 params:
   experience: "real_02"
+  file: "real_02.wsp"
   sample: 3
 ---
 
@@ -12,12 +13,13 @@ knitr::opts_chunk$set(echo = TRUE)
 
 ```{r}
 library(flowWorkspace)
+library(caret)
 ```
 
 # Importing data from FlowJo workspace
 Open FlowJo workspace
 ```{r}
-(ws <-  openWorkspace("real_02.wsp"))
+(ws <-  openWorkspace(params$file))
 ```
 
 # Parsing the workspace: GATING SET
@@ -140,7 +142,7 @@ label_names <- c("7" = "NKT_4", "8" = "NKT_DP", "9" = "NKT_8", "10" = "NKT_DN",
                  "12" = "NK_4", "13" = "NK_DP", "14" = "NK_8", "15" = "NK_DN",
                  "17" = "T_cells_4", "18" = "T_cells_DP", "19" = "T_cells_8", "20" = "T_cells_DN",
                  "23" = "B_4", "24" = "B_DP", "25" = "B_8", "26" = "B_DN",
-                 "28" = "NO_B_4", "29" = "NO_B_DP", "30" = "NO_B_8", "31" = "NO_B_DN")
+                 "28" = "NO_BTNK_4", "29" = "NO_BTNK_DP", "30" = "NO_BTNK_8", "31" = "NO_BTNK_DN")
 names(label_names)
 ```
 
@@ -164,8 +166,8 @@ We can now group the labels. For instance, we will follow the gating logic:
 data$metalabels <- "outliers"
 
 # Naming the meta-labels and the patterns that will be used to define them
-metalabels_list <- c("NKT", "NK", "T", "B", "NO_B")
-patterns_list <- c("NKT_", "NK_", "T_cells_", "B_", "NO_B_")
+metalabels_list <- c("NKT", "NK", "T", "B", "NO_BTNK")
+patterns_list <- c("NKT_", "NK_", "T_cells_", "B_", "NO_B")
 
 for(i in 1:length(metalabels_list)){
   data$metalabels <- ifelse(grepl(patterns_list[i], data$labels), metalabels_list[i], data$metalabels)
@@ -178,6 +180,14 @@ table(data$metalabels)
 ```{r}
 table(data$labels, data$metalabels)
 ```
+
+## LYMPHOCYTES
+We are going to keep just the living, single cell lymphocytes:
+```{r}
+data <- data[data$cells == "lymphocytes",]
+table(data$labels, data$metalabels)
+```
+
 
 # Export data 
 ## Conversion to `FlowFrame` class objects
@@ -195,11 +205,22 @@ colnames(data)[1:5] <-  c("CD3", "CD4", "CD8", "CD56", "CD19")
 colnames(data)
 ```
 
+## Downsampling
+Based on "labels".
+```{r}
+subsample <- createDataPartition(data$labels, p = 0.1, list = F)
+```
+
 ```{r}
 library(flowCore)
 
 # Just the live, single-cell lymphocytes!
-ff <- new("flowFrame", exprs = as.matrix(data[data$cells == "lymphocytes", 1:5])) # 1:5 markers, w/o the labels
+
+# all data
+#ff <- new("flowFrame", exprs = as.matrix(data[data$cells == "lymphocytes", 1:5])) # 1:5 markers, w/o the labels
+
+# subsample
+ff <- new("flowFrame", exprs = as.matrix(data[subsample, 1:5])) # 1:5 markers, w/o the labels
 summary(ff)
 ```
 
@@ -210,15 +231,29 @@ autoplot(ff[], colnames(data)[4], colnames(data)[1])
 
 ## Export to .fcs
 ```{r, eval = T}
-write.FCS(ff, paste("ff_", params$experience, "_", getSamples(ws)[s,"name"], ".fcs", sep = ""))
+#write.FCS(ff, paste("ff_", params$experience, "_", getSamples(ws)[s,"name"], ".fcs", sep = ""))
+write.FCS(ff, paste("subsample_ff_", params$experience, "_", getSamples(ws)[s,"name"], ".fcs", sep = ""))
 ```
 
 ## Save the labels and meta-labels
 ```{r}
-saveRDS(data[data$cells == "lymphocytes", "labels"],
+data$metalabels <- factor(data$metalabels, levels = c("NKT", "NK", "T", "B", "NO_BTNK", "outliers"))
+```
+
+```{r, eval = F}
+# all data
+saveRDS(data[, "labels"],
         paste("labels_", params$experience, "_", getSamples(ws)[s,"name"], sep = "")) 
-saveRDS(data[data$cells == "lymphocytes", "metalabels"],
+saveRDS(data[, "metalabels"],
         paste("metalabels_", params$experience, "_", getSamples(ws)[s,"name"], sep = "")) 
+```
+
+```{r, eval = T, cache = F}
+# subsample
+saveRDS(data[subsample, "labels"],
+        paste("subsample_labels_", params$experience, "_", getSamples(ws)[s,"name"], sep = "")) 
+saveRDS(data[subsample, "metalabels"],
+        paste("subsample_metalabels_", params$experience, "_", getSamples(ws)[s,"name"], sep = "")) 
 ```
 
 ```{r}
