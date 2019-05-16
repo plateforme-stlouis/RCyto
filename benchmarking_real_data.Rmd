@@ -190,7 +190,7 @@ print(matched$t)
 (UMAP_fPeaks_cm <- confusionMatrix(data = matched$preds, reference = labels))$table
   
 # COMPUTE THE MEAN F1
-UMAP_fPeaks_F1 <- mean_f1(cm, n)
+UMAP_fPeaks_F1 <- mean_f1(UMAP_fPeaks_cm, n)
 ```
 
 
@@ -213,7 +213,7 @@ print(matched$t)
 (UMAP_ClusterX_cm <- confusionMatrix(data = matched$preds, reference = labels))$table
   
 # COMPUTE THE MEAN F1
-UMAP_ClusterX_F1 <- mean_f1(cm, n)
+UMAP_ClusterX_F1 <- mean_f1(UMAP_ClusterX_cm, n)
 ```  
 
 # Evaluation
