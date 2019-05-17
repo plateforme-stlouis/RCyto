@@ -1,10 +1,10 @@
 ---
-title: "real_02 downsample 3 (temoin 2)"
+title: "real_02 downsample 2 (temoin 1)"
 output: html_document
 params:
   experience: "real_02"
   file: "real_02.wsp"
-  sample: 3
+  sample: 2
 ---
 
 ```{r setup, include=FALSE}
@@ -115,7 +115,7 @@ getNodes(gs)
 We are just interested in viable, single cells lymphocytes (no monocytes): node 5.
 ```{r}
 nodes[5]
-cells <- getIndices(gs[[3]], nodes[5])
+cells <- getIndices(gs[[s]], nodes[5])
 length(cells)
 table(cells)
 ```
@@ -205,21 +205,18 @@ colnames(data)[1:5] <-  c("CD3", "CD4", "CD8", "CD56", "CD19")
 colnames(data)
 ```
 
-## Downsampling
+##Downsampling
 Based on "labels".
 ```{r}
-subsample <- createDataPartition(data$labels, p = 0.1, list = F)
+subsample <- createDataPartition(data$labels, p = 0.15, list = F)
 ```
 
 ```{r}
 library(flowCore)
 
 # Just the live, single-cell lymphocytes!
-
-# all data
 #ff <- new("flowFrame", exprs = as.matrix(data[data$cells == "lymphocytes", 1:5])) # 1:5 markers, w/o the labels
 
-# subsample
 ff <- new("flowFrame", exprs = as.matrix(data[subsample, 1:5])) # 1:5 markers, w/o the labels
 summary(ff)
 ```
@@ -235,13 +232,22 @@ autoplot(ff[], colnames(data)[4], colnames(data)[1])
 write.FCS(ff, paste("subsample_ff_", params$experience, "_", getSamples(ws)[s,"name"], ".fcs", sep = ""))
 ```
 
+## Exporting the sublabels groups:
+```{r}
+sublabels_levels <- list("NKT" = c("NKT_4", "NKT_DP", "NKT_8", "NKT_DN"),
+                         "NK" = c("NK_4", "NK_DP", "NK_8", "NK_DN"),
+                         "T" = c("T_cells_4", "T_cells_DP", "T_cells_8", "T_cells_DN"),
+                         "B" = c("B_4", "B_DP", "B_8", "B_DN"),
+                         "NO_BTNK" = c("NO_BTNK_4", "NO_BTNK_DP", "NO_BTNK_8", "NO_BTNK_DN"))
+saveRDS(sublabels_levels, paste("sublabels_levels", params$experience, sep = "_"))
+```
+
 ## Save the labels and meta-labels
 ```{r}
 data$metalabels <- factor(data$metalabels, levels = c("NKT", "NK", "T", "B", "NO_BTNK", "outliers"))
 ```
 
 ```{r, eval = F}
-# all data
 saveRDS(data[, "labels"],
         paste("labels_", params$experience, "_", getSamples(ws)[s,"name"], sep = "")) 
 saveRDS(data[, "metalabels"],
@@ -249,7 +255,6 @@ saveRDS(data[, "metalabels"],
 ```
 
 ```{r, eval = T, cache = F}
-# subsample
 saveRDS(data[subsample, "labels"],
         paste("subsample_labels_", params$experience, "_", getSamples(ws)[s,"name"], sep = "")) 
 saveRDS(data[subsample, "metalabels"],
