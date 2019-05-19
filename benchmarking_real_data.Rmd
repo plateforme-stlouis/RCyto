@@ -1,6 +1,6 @@
 ---
 title: "Algorithm benchmarking script, main and subpopulations"
-subtitle: "Experience `real_02`, sample `5` (`Temoin 4`)"
+subtitle: "Experience `real_02`, sample `5` (`Temoin 4`), downsampled"
 output:
   html_document:
     number_sections: yes
@@ -37,7 +37,7 @@ library(knitr)
 
 # Reading the data
 ```{r}
-# import the fcs file
+# Importing the fcs file
 ff <- flowCore::read.FCS(params$file)
 
 # Importing METALABELS (main populations) and SUBLABELS (subpopulations)
@@ -51,6 +51,9 @@ sublabels_levels <- readRDS(params$sublabels_levels)
 main_pops_freq <- (prop.table(table(metalabels)))*100
 sub_pops_freq <- (prop.table(table(sublabels)))*100
 ```
+
+File: ``r params$file``   
+``r nrow(ff@exprs)`` cells.  
 
 # Number of clusters (For `FlowSOM`)
 ```{r}
@@ -93,12 +96,13 @@ matching <- function(prediction, labels){
 ```
 
 Computing the mean F1:
-```{r}
-mean_f1 <- function(cm, n){
+```{r, echo = T}
+mean_f1 <- function(cm){
   # Extracting the F1 values
-  f1_list <- cm$byClass[1:n,"F1"] # "outliers" must be the last class. Not considered.
-  # replacing NAs by zero
-  f1_list[is.na(f1_list)] <-  0
+  # cm: confusion matrix
+  f1_list <- cm$byClass[,"F1"]
+  # removing NAs
+  f1_list <- f1_list[!is.na(f1_list)] 
   # Computing mean F1 
   return(mean(f1_list))
 }
@@ -107,9 +111,35 @@ mean_f1 <- function(cm, n){
 # Preaparing results tables
 ```{r}
 mains_f1 <- c()
-summ_mains <- data.frame(File = NA, n = 0, Method = NA, Clusters = 0, Mean_F1 = 0)
+summ_mains <- data.frame(File = NA, n = 0, Method = NA, Clusters = 0, Partitions = 0, Mean_F1 = 0)
 subs_f1 <- c()
-summ_subs <- data.frame(File = NA, n = 0, Method = NA, Clusters = 0, Population = NA, Sub_clusters = 0, Mean_F1 = 0)
+summ_subs <- data.frame(File = NA, n = 0, Method = NA, Clusters = 0, Partitions = 0, Population = NA, 
+                        F1 = 0, Sub_clusters = 0, Sub_partitions = 0, Mean_F1 = 0)
+```
+
+# UMAP dimensionality reduction
+```{r}
+set.seed(params$seed)
+reduction <- umap(ff@exprs, random_state = params$seed)
+colnames(reduction$layout) <- c("UMAP_1", "UMAP_2")
+```
+
+```{r}
+# preparing data for plotting on UMAP:
+umap_df <- cbind(as.data.frame(reduction$layout), as.data.frame(metalabels), 
+              as.data.frame(sublabels))
+cytof_clusterPlot(data = umap_df, xlab = "UMAP_1", ylab = "UMAP_2", point_size = 0.5, labelRepel = F,
+                  cluster = "metalabels", sampleLabel = FALSE, labelSize = 3, title = "Main populations")
+```
+
+```{r}
+# Plotting subpopulations
+for(i in 1:(length(levels(metalabels)) - 1)){
+  plot <- cytof_clusterPlot(data = umap_df[metalabels == levels(metalabels)[i],],
+                                      xlab = "UMAP_1", ylab = "UMAP_2", point_size = 0.5, labelRepel = F,
+                                      cluster = "sublabels", sampleLabel = FALSE, labelSize = 3, title = levels(metalabels)[i])
+  grid.arrange(plot)
+}
 ```
 
 # Clustering/partitioning
@@ -123,25 +153,32 @@ for(i in 1:length(clusters)){
   # META-CLUSTERING
   fs <- FlowSOM(ff, compensate = F,transform = F, scale = F,
                 colsToUse = colnames(ff@exprs), nClus = clusters[i], seed = params$seed)
-  mc_cell <- fs$metaclustering[fs$FlowSOM$map$mapping[,1]]
+  clustering <- fs$metaclustering[fs$FlowSOM$map$mapping[,1]]
   
   ### MAIN POPULATIONS
   # number of main populations, without the outliers
   n <- length(levels(metalabels)) - 1
   
   # MATCHING META-LABELS AND PREDICTIONS (cell level)
-  matched <- matching(mc_cell, metalabels)
-  main_prediction <-  matched$preds
+  matched <- matching(clustering, metalabels)
+  main_matched <-  matched$preds
+  number_partitions <- length(table(matched$m))
 
   # COMPUTING THE CONFUSION MATRIX AND OTHER PERFORMANCE MEASUREMENTS
-  cm <- confusionMatrix(data = matched$preds, reference = metalabels)
-  # Add the F1 values to a list (will be used to build the summary plot)
-  mains_f1 <- c(mains_f1, cm$byClass[1:n, "F1"])
+  cm <- confusionMatrix(data = factor(main_matched[metalabels != "outliers"], 
+                                     levels = levels(metalabels)[1:n]),
+                        reference = factor(metalabels[metalabels != "outliers"],
+                                           levels = levels(metalabels)[1:n]))
+
+  # Add the F1 values to a list 
+  f1_temp <- cm$byClass[, "F1"]
+  mains_f1 <- c(mains_f1, f1_temp)
 
   # COMPUTE THE MEAN F1
-  mf1 <- mean_f1(cm, n)
+  mf1 <- mean_f1(cm)
   # Storing the result 
-  summ_mains[i,] <- c(params$file, nrow(ff@exprs), method, clusters[i], mf1)
+  summ_mains[i,] <- c(params$file, nrow(ff@exprs), method, clusters[i],
+                      number_partitions, mf1)
   
   # FOR VISUALIZATION
   # Print the unmatched cross table:
@@ -162,31 +199,38 @@ for(i in 1:length(clusters)){
     for(j in 1:length(split_list)){
     # counter
     k <-  k + 1
-    # Selecting the well-predicted cells (i.e., all the T cells matched as T)
+    # Name of the population
+    name_pop <- levels(metalabels)[split_list[j]]
+    # Selecting the well-predicted cells (e.g., all the T cells matched as T)
     well_pred <- rep(NA, length(metalabels))
-    well_pred <- ifelse(main_prediction  == levels(metalabels)[split_list[j]] & metalabels == levels(metalabels)[split_list[j]], TRUE, FALSE)
+    well_pred <- ifelse(main_matched == name_pop & 
+                          metalabels == name_pop, TRUE, FALSE)
     
     # MATCHING SUBLABELS AND PREDICTIONS
+    # Only the clusters for the population
+    table_clusters <- table(clustering[well_pred])
+    clusters_list <- names(table_clusters[table_clusters>0])
     # Only the sublabels for the population
     # Only the levels for those sublabels
-    sublevels <- sublabels_levels[[levels(metalabels)[split_list[j]]]]
-    matched <- matching(mc_cell[well_pred], 
-                  factor(sublabels[well_pred], levels = sublevels))
+    sublevels <- sublabels_levels[[name_pop]]
+    matched <- matching(factor(clustering[well_pred], levels = clusters_list),
+                        factor(sublabels[well_pred], levels = sublevels))
     
     # COMPUTING THE CONFUSION MATRIX AND OTHER PERFORMANCE MEASUREMENTS
     cm <- confusionMatrix(data = matched$preds, 
                           reference = factor(sublabels[well_pred], levels = sublevels))
-    # Add the F1 values to a list (will be used to build the summary plot)
+    # Add the F1 values to a list (will be used to build a summary)
     subs_f1 <- c(subs_f1, cm$byClass[, "F1"])
     
     # COMPUTE THE MEAN F1
-    # number of subpopulations
-    n <- length(sublevels)
-    mf1 <- mean_f1(cm, n)
+    mf1 <- mean_f1(cm)
     # Storing the result
-    summ_subs[k,] <- c(params$file, nrow(ff@exprs), method, clusters[i], levels(metalabels)[split_list[j]], table_maxs[table_maxs>1][[j]], mf1)
+    summ_subs[k,] <- c(params$file, nrow(ff@exprs), method, clusters[i], number_partitions, name_pop, 
+                       f1_temp[[split_list[j]]], table_maxs[table_maxs>1][[j]], length(table(matched$m)), mf1)
     
     # FOR VISUALIZATION
+    cat("\n", name_pop)
+    print(matched$t)
     print(cm$table)
     }
   }
@@ -201,26 +245,32 @@ k <- nrow(summ_subs)
 
 # CLUSTERING
 pred <- Rphenograph(ff@exprs) # default k = 30 nearest neighbours
+clustering <- pred$membership
 
 ### MAIN POPULATIONS
 # number of main populations, without the outliers
 n <- length(levels(metalabels)) - 1
   
-# MATCHING LABELS AND PREDICTIONS
-matched <- matching(pred$membership, metalabels)
-main_prediction <-  matched$preds
+# MATCHING META-LABELS AND PREDICTIONS
+matched <- matching(clustering, metalabels)
+main_matched <-  matched$preds
+number_partitions <- length(table(matched$m))
 
 # COMPUTING THE CONFUSION MATRIX AND OTHER PERFORMANCE MEASUREMENTS
-cm <- confusionMatrix(data = matched$preds, reference = metalabels)
-# Add the F1 values to a list (will be used to build the summary plot)
-mains_f1 <- c(mains_f1, cm$byClass[1:n, "F1"])
+cm <- confusionMatrix(data = factor(main_matched[metalabels != "outliers"],
+                                    levels = levels(metalabels)[1:n]),
+                        reference = factor(metalabels[metalabels != "outliers"],
+                                           levels = levels(metalabels)[1:n]))
+# Add the F1 values to a list 
+f1_temp <- cm$byClass[, "F1"]
+mains_f1 <- c(mains_f1, f1_temp)
 
 # COMPUTE THE MEAN F1
-mf1 <- mean_f1(cm, n)
+mf1 <- mean_f1(cm)
 # Storing the result 
 nc <- length(matched$m) # predicted clusters
-summ_mains[(nrow(summ_mains)+1),] <- c(params$file, nrow(ff@exprs), method, nc, mf1)
-  
+summ_mains[(nrow(summ_mains)+1),] <- c(params$file, nrow(ff@exprs), method, 
+                                       nc, number_partitions, mf1)
 # FOR VISUALIZATION
 print(matched$t)
 print(cm$table)
@@ -237,44 +287,44 @@ print(cm$table)
     for(j in 1:length(split_list)){
     # counter
     k <-  k + 1
-    # Selecting the well-predicted cells (i.e., all the T cells matched as T)
+    # Name of the population
+    name_pop <- levels(metalabels)[split_list[j]]
+    # Selecting the well-predicted cells (e.g., all the T cells matched as T)
     well_pred <- rep(NA, length(metalabels))
-    well_pred <- ifelse(main_prediction  == levels(metalabels)[split_list[j]] & metalabels == levels(metalabels)[split_list[j]], TRUE, FALSE)
+    well_pred <- ifelse(main_matched == name_pop & 
+                          metalabels == name_pop, TRUE, FALSE)
     
     # MATCHING SUBLABELS AND PREDICTIONS
+    # Only the clusters for the population
+    table_clusters <- table(clustering[well_pred])
+    clusters_list <- names(table_clusters[table_clusters>0])
     # Only the sublabels for the population
     # Only the levels for those sublabels
-    sublevels <- sublabels_levels[[levels(metalabels)[split_list[j]]]]
-    matched <- matching(mc_cell[well_pred], 
-                  factor(sublabels[well_pred], levels = sublevels))
+    sublevels <- sublabels_levels[[name_pop]]
+    matched <- matching(factor(clustering[well_pred], levels = clusters_list),
+                        factor(sublabels[well_pred], levels = sublevels))
     
     # COMPUTING THE CONFUSION MATRIX AND OTHER PERFORMANCE MEASUREMENTS
     cm <- confusionMatrix(data = matched$preds, 
                           reference = factor(sublabels[well_pred], levels = sublevels))
-    # Add the F1 values to a list (will be used to build the summary plot)
+    # Add the F1 values to a list 
     subs_f1 <- c(subs_f1, cm$byClass[, "F1"])
     
     # COMPUTE THE MEAN F1
-    # number of subpopulations
-    n <- length(sublevels)
-    mf1 <- mean_f1(cm, n)
+    mf1 <- mean_f1(cm)
     # Storing the result
-    summ_subs[k,] <- c(params$file, nrow(ff@exprs), method, nc, levels(metalabels)[split_list[j]], table_maxs[table_maxs>1][[j]], mf1)
+    summ_subs[k,] <- c(params$file, nrow(ff@exprs), method, nc, number_partitions, name_pop, 
+                       f1_temp[[split_list[j]]], table_maxs[table_maxs>1][[j]], length(table(matched$m)), mf1)
     
     # FOR VISUALIZATION
+    cat("\n", name_pop)
+    print(matched$t)
     print(cm$table)
     }
   }
 ```
 
-## UMAP DIMENSIONALITY REDUCTION
-```{r}
-set.seed(params$seed)
-reduction <- umap(ff@exprs, random_state = params$seed)
-colnames(reduction$layout) <- c("UMAP_1", "UMAP_2")
-```
-
-### `flowPeaks` 
+## UMAP + `flowPeaks` 
 ```{r}
 # Parameters
 method <- "UMAP + flowPeaks"
@@ -282,28 +332,32 @@ k <- nrow(summ_subs)
 
 # CLUSTERING
 red_data <- as.matrix(reduction$layout)
-colnames(red_data) <- c("tsne_1", "tsne_2")
 pred <-  flowPeaks(red_data)
+clustering <- pred$peaks.cluster
 
 ### MAIN POPULATIONS
 # number of main populations, without the outliers
 n <- length(levels(metalabels)) - 1
   
 # MATCHING LABELS AND PREDICTIONS
-matched <- matching(pred$peaks.cluster, metalabels)
-main_prediction <-  matched$preds
+matched <- matching(clustering, metalabels)
+main_matched <-  matched$preds
+number_partitions <- length(table(matched$m))
 
 # COMPUTING THE CONFUSION MATRIX AND OTHER PERFORMANCE MEASUREMENTS
-cm <- confusionMatrix(data = matched$preds, reference = metalabels)
-# Add the F1 values to a list (will be used to build the summary plot)
-mains_f1 <- c(mains_f1, cm$byClass[1:n, "F1"])
+cm <- confusionMatrix(data = factor(main_matched[metalabels != "outliers"],
+                                    levels = levels(metalabels)[1:n]),
+                        reference = factor(metalabels[metalabels != "outliers"],
+                                           levels = levels(metalabels)[1:n]))
+# Add the F1 values to a list 
+mains_f1 <- c(mains_f1, cm$byClass[, "F1"])
 
 # COMPUTE THE MEAN F1
-mf1 <- mean_f1(cm, n)
+mf1 <- mean_f1(cm)
 # Storing the result 
 nc <- length(matched$m) # predicted clusters
-summ_mains[(nrow(summ_mains)+1),] <- c(params$file, nrow(ff@exprs), method, nc, mf1)
-  
+summ_mains[(nrow(summ_mains)+1),] <- c(params$file, nrow(ff@exprs), method, 
+                                       nc, number_partitions, mf1)
 # FOR VISUALIZATION
 print(matched$t)
 print(cm$table)
@@ -320,16 +374,22 @@ print(cm$table)
     for(j in 1:length(split_list)){
     # counter
     k <-  k + 1
-    # Selecting the well-predicted cells (i.e., all the T cells matched as T)
+    # Name of the population
+    name_pop <- levels(metalabels)[split_list[j]]
+    # Selecting the well-predicted cells (e.g., all the T cells matched as T)
     well_pred <- rep(NA, length(metalabels))
-    well_pred <- ifelse(main_prediction  == levels(metalabels)[split_list[j]] & metalabels == levels(metalabels)[split_list[j]], TRUE, FALSE)
+    well_pred <- ifelse(main_matched == name_pop & 
+                          metalabels == name_pop, TRUE, FALSE)
     
     # MATCHING SUBLABELS AND PREDICTIONS
+    # Only the clusters for the population
+    table_clusters <- table(clustering[well_pred])
+    clusters_list <- names(table_clusters[table_clusters>0])
     # Only the sublabels for the population
     # Only the levels for those sublabels
-    sublevels <- sublabels_levels[[levels(metalabels)[split_list[j]]]]
-    matched <- matching(mc_cell[well_pred], 
-                  factor(sublabels[well_pred], levels = sublevels))
+    sublevels <- sublabels_levels[[name_pop]]
+    matched <- matching(factor(clustering[well_pred], levels = clusters_list),
+                        factor(sublabels[well_pred], levels = sublevels))
     
     # COMPUTING THE CONFUSION MATRIX AND OTHER PERFORMANCE MEASUREMENTS
     cm <- confusionMatrix(data = matched$preds, 
@@ -338,48 +398,52 @@ print(cm$table)
     subs_f1 <- c(subs_f1, cm$byClass[, "F1"])
     
     # COMPUTE THE MEAN F1
-    # number of subpopulations
-    n <- length(sublevels)
-    mf1 <- mean_f1(cm, n)
+    mf1 <- mean_f1(cm)
     # Storing the result
-    summ_subs[k,] <- c(params$file, nrow(ff@exprs), method, nc, levels(metalabels)[split_list[j]], table_maxs[table_maxs>1][[j]], mf1)
+    summ_subs[k,] <- c(params$file, nrow(ff@exprs), method, nc, number_partitions, name_pop, 
+                       f1_temp[[split_list[j]]], table_maxs[table_maxs>1][[j]], length(table(matched$m)), mf1)
     
     # FOR VISUALIZATION
+    cat("\n", name_pop)
+    print(matched$t)
     print(cm$table)
     }
   }
 ```
 
-
-### `ClusterX` 
+## UMAP + `ClusterX` 
 ```{r}
 # Parameters
 method <- "UMAP + ClusterX"
 k <- nrow(summ_subs)
 
 # CLUSTERING
-pred <- cytof_cluster(reduction$layout, method = "ClusterX")
+clustering <- cytof_cluster(reduction$layout, method = "ClusterX")
 
 ### MAIN POPULATIONS
 # number of main populations, without the outliers
 n <- length(levels(metalabels)) - 1
   
 # MATCHING LABELS AND PREDICTIONS
-matched <- matching(pred, metalabels)
-# Storing the results
-main_prediction <-  matched$preds
+matched <- matching(clustering, metalabels)
+main_matched <-  matched$preds
+number_partitions <- length(table(matched$m))
 
 # COMPUTING THE CONFUSION MATRIX AND OTHER PERFORMANCE MEASUREMENTS
-cm <- confusionMatrix(data = matched$preds, reference = metalabels)
-# Add the F1 values to a list (will be used to build the summary plot)
-mains_f1 <- c(mains_f1, cm$byClass[1:n, "F1"])
+cm <- confusionMatrix(data = factor(main_matched[metalabels != "outliers"],
+                                    levels = levels(metalabels)[1:n]),
+                        reference = factor(metalabels[metalabels != "outliers"],
+                                           levels = levels(metalabels)[1:n]))
+  
+# Add the F1 values to a list 
+mains_f1 <- c(mains_f1, cm$byClass[, "F1"])
 
 # COMPUTE THE MEAN F1
-mf1 <- mean_f1(cm, n)
+mf1 <- mean_f1(cm)
 # Storing the result 
 nc <- length(matched$m) # predicted clusters
-summ_mains[(nrow(summ_mains)+1),] <- c(params$file, nrow(ff@exprs), method, nc, mf1)
-  
+summ_mains[(nrow(summ_mains)+1),] <- c(params$file, nrow(ff@exprs), method, 
+                                       nc, number_partitions, mf1)
 # FOR VISUALIZATION
 print(matched$t)
 print(cm$table)
@@ -396,16 +460,22 @@ print(cm$table)
     for(j in 1:length(split_list)){
     # counter
     k <-  k + 1
-    # Selecting the well-predicted cells (i.e., all the T cells matched as T)
+    # Name of the population
+    name_pop <- levels(metalabels)[split_list[j]]
+    # Selecting the well-predicted cells (e.g., all the T cells matched as T)
     well_pred <- rep(NA, length(metalabels))
-    well_pred <- ifelse(main_prediction  == levels(metalabels)[split_list[j]] & metalabels == levels(metalabels)[split_list[j]], TRUE, FALSE)
+    well_pred <- ifelse(main_matched == name_pop & 
+                          metalabels == name_pop, TRUE, FALSE)
     
     # MATCHING SUBLABELS AND PREDICTIONS
+    # Only the clusters for the population
+    table_clusters <- table(clustering[well_pred])
+    clusters_list <- names(table_clusters[table_clusters>0])
     # Only the sublabels for the population
     # Only the levels for those sublabels
-    sublevels <- sublabels_levels[[levels(metalabels)[split_list[j]]]]
-    matched <- matching(mc_cell[well_pred], 
-                  factor(sublabels[well_pred], levels = sublevels))
+    sublevels <- sublabels_levels[[name_pop]]
+    matched <- matching(factor(clustering[well_pred], levels = clusters_list),
+                        factor(sublabels[well_pred], levels = sublevels))
     
     # COMPUTING THE CONFUSION MATRIX AND OTHER PERFORMANCE MEASUREMENTS
     cm <- confusionMatrix(data = matched$preds, 
@@ -414,13 +484,14 @@ print(cm$table)
     subs_f1 <- c(subs_f1, cm$byClass[, "F1"])
     
     # COMPUTE THE MEAN F1
-    # number of subpopulations
-    n <- length(sublevels)
-    mf1 <- mean_f1(cm, n)
+    mf1 <- mean_f1(cm)
     # Storing the result
-    summ_subs[k,] <- c(params$file, nrow(ff@exprs), method, nc, levels(metalabels)[split_list[j]], table_maxs[table_maxs>1][[j]], mf1)
+    summ_subs[k,] <- c(params$file, nrow(ff@exprs), method, nc, number_partitions, name_pop, 
+                       f1_temp[[split_list[j]]], table_maxs[table_maxs>1][[j]], length(table(matched$m)), mf1)
     
     # FOR VISUALIZATION
+    cat("\n", name_pop)
+    print(matched$t)
     print(cm$table)
     }
   }
@@ -430,14 +501,14 @@ print(cm$table)
 ## Main populations
 ```{r}
 # mean F1 , main populations
-summ_mains[,5] <- as.numeric(summ_mains[,5])
-kable(summ_mains[,3:5], digits = 3)
+summ_mains[,6] <- as.numeric(summ_mains[,6])
+kable(summ_mains[,3:6], digits = 3)
 ```
 
 ```{r, eval = T}
 # export results (mean F1)
 write.table(summ_mains, 
-            file = "../results_real_f1/summ_mains.txt", append = T, sep = "\t", row.names = F, col.names = F)
+            file = "results/summ_mains.txt", append = T, sep = "\t", row.names = F, col.names = F)
 ```
 
 ```{r}
@@ -464,7 +535,7 @@ kable(main_pops_freq, digits = 3)
 
 ```{r, eval = T}
 # export plot
-png(paste("../results_real_f1/graph_MAINS_", params$file, ".png", sep = ""), res=150, width = 1400, height = 1400)
+png(paste("results/graph_MAINS_", params$file, ".png", sep = ""), res=150, width = 1400, height = 1400)
 ggplot(df, aes(class, F1)) + geom_point(aes(size = frequencies, color = frequencies)) + 
   coord_flip() + ggtitle("F1 scores (main populations)") + ylim(0,1) + facet_wrap(.~method) + 
   scale_color_gradient2(low = "#820000", mid = "#ff00e8", high = "#2e00ff", midpoint = (max(main_pops_freq)-min(main_pops_freq))/2)
@@ -475,20 +546,21 @@ dev.off()
 ```{r}
 # mean F1 , subpopulations
 summ_subs[,7] <- as.numeric(summ_subs[,7])
-kable(summ_subs[,3:7], digits = 3)
+summ_subs[,10] <- as.numeric(summ_subs[,10])
+kable(summ_subs[,3:10], digits = 3)
 ```
 
 ```{r, eval = T}
 # export results (mean F1)
 write.table(summ_subs, 
-            file = "../results_real_f1/summ_subs.txt", append = T, sep = "\t", row.names = F, col.names = F)
+            file = "results/summ_subs.txt", append = T, sep = "\t", row.names = F, col.names = F)
 ```
 
 ```{r}
 # preparing for plot
 method <- factor(rep(paste(summ_subs[,3], summ_subs[,4]), each = 4)) # IN THIS CAS THIS WORKS BECAUSE ALL THE MAIN POPULATIONS HAVE 4 SUBCLASSES
-class <- unlist(sublabels_levels[summ_subs[,5]])
-main_class <- rep(summ_subs[,5], each = 4) # IN THIS CAS THIS WORKS BECAUSE ALL THE MAIN POPULATIONS HAVE 4 SUBCLASSES
+class <- unlist(sublabels_levels[summ_subs[,6]])
+main_class <- rep(summ_subs[,6], each = 4) # IN THIS CAS THIS WORKS BECAUSE ALL THE MAIN POPULATIONS HAVE 4 SUBCLASSES
 #levels(method)
 ```
 
@@ -504,7 +576,7 @@ ggplot(df, aes(class, F1)) + geom_point(aes(color = main_class)) +
 
 ```{r, eval = T}
 # export plot
-png(paste("../results_real_f1/graph_SUBS_", params$file, ".png", sep = ""), res=150, width = 1400, height = 2400)
+png(paste("results/graph_SUBS_", params$file, ".png", sep = ""), res=150, width = 1400, height = 2400)
 ggplot(df, aes(class, F1)) + geom_point(aes(color = main_class)) + 
   coord_flip() + ggtitle("F1 scores (subpopulations)") + ylim(0,1) + facet_wrap(.~method) 
 dev.off()
@@ -513,5 +585,6 @@ dev.off()
 ```{r}
 kable(sub_pops_freq, digits = 3)
 ```
+
 
 
