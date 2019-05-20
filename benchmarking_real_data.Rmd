@@ -1,6 +1,6 @@
 ---
 title: "Algorithm benchmarking script, main and subpopulations"
-subtitle: "Experience `real_02`, sample `5` (`Temoin 4`), downsampled"
+subtitle: "Experience `real_02`, sample `2` (`Temoin 1`), downsampled"
 output:
   html_document:
     number_sections: yes
@@ -11,9 +11,9 @@ output:
     highlight: tango
 author: Anna Guadall
 params:
-  file: "subsample_ff_real_02_Specimen_001_Temoin4_006.fcs.fcs"
-  labels: "subsample_labels_real_02_Specimen_001_Temoin4_006.fcs"
-  metalabels: "subsample_metalabels_real_02_Specimen_001_Temoin4_006.fcs" 
+  file: "subsample_ff_real_02_Specimen_001_Temoin1_003.fcs.fcs"
+  labels: "subsample_labels_real_02_Specimen_001_Temoin1_003.fcs"
+  metalabels: "subsample_metalabels_real_02_Specimen_001_Temoin1_003.fcs" 
   sublabels_levels: "sublabels_levels_real_02"
   seed: 42
   clusters: "4,5,8,10,20"
@@ -28,7 +28,6 @@ library(FlowSOM)
 library(caret)
 library(cytofkit)
 library(flowPeaks)
-library(flowMeans)
 library(ggplot2)
 library(gridExtra)
 library(umap)
@@ -108,7 +107,7 @@ mean_f1 <- function(cm){
 }
 ```
 
-# Preaparing results tables
+# Preparing results tables
 ```{r}
 mains_f1 <- c()
 summ_mains <- data.frame(File = NA, n = 0, Method = NA, Clusters = 0, Partitions = 0, Mean_F1 = 0)
@@ -124,6 +123,7 @@ reduction <- umap(ff@exprs, random_state = params$seed)
 colnames(reduction$layout) <- c("UMAP_1", "UMAP_2")
 ```
 
+## Data visualization: main populations 
 ```{r}
 # preparing data for plotting on UMAP:
 umap_df <- cbind(as.data.frame(reduction$layout), as.data.frame(metalabels), 
@@ -132,6 +132,7 @@ cytof_clusterPlot(data = umap_df, xlab = "UMAP_1", ylab = "UMAP_2", point_size =
                   cluster = "metalabels", sampleLabel = FALSE, labelSize = 3, title = "Main populations")
 ```
 
+## Data visualization: subpopulations 
 ```{r}
 # Plotting subpopulations
 for(i in 1:(length(levels(metalabels)) - 1)){
@@ -151,6 +152,7 @@ k <- 0
 
 for(i in 1:length(clusters)){
   # META-CLUSTERING
+  set.seed(params$seed)
   fs <- FlowSOM(ff, compensate = F,transform = F, scale = F,
                 colsToUse = colnames(ff@exprs), nClus = clusters[i], seed = params$seed)
   clustering <- fs$metaclustering[fs$FlowSOM$map$mapping[,1]]
