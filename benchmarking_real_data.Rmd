@@ -1,5 +1,5 @@
 ---
-title: "Algorithm benchmarking script, main and subpopulations"
+title: "Algorithm benchmarking script. Experimental design: 5 parameters"
 subtitle: "Experience `real_02`, sample `2` (`Temoin 1`), downsampled"
 output:
   html_document:
@@ -11,12 +11,13 @@ output:
     highlight: tango
 author: Anna Guadall
 params:
-  file: "subsample_ff_real_02_Specimen_001_Temoin1_003.fcs.fcs"
-  labels: "subsample_labels_real_02_Specimen_001_Temoin1_003.fcs"
-  metalabels: "subsample_metalabels_real_02_Specimen_001_Temoin1_003.fcs" 
+  file: "down_50_ff_real_02_2_Specimen_001_Temoin1_003.fcs.fcs"
+  labels: "down_50_labels_real_02_2_Specimen_001_Temoin1_003.fcs"
+  metalabels: "down_50_metalabels_real_02_2_Specimen_001_Temoin1_003.fcs" 
   sublabels_levels: "sublabels_levels_real_02"
   seed: 42
   clusters: "4,5,8,10,20"
+  results_dir: "results_50"
 ---
 
 ```{r setup, include=FALSE}
@@ -53,6 +54,9 @@ sub_pops_freq <- (prop.table(table(sublabels)))*100
 
 File: ``r params$file``   
 ``r nrow(ff@exprs)`` cells.  
+``r length(levels(metalabels)) - 1`` main populations.  
+``r length(levels(sublabels)) - 1`` subpopulations.  
+`r ncol(ff@exprs)` parameters.  
 
 # Number of clusters (For `FlowSOM`)
 ```{r}
@@ -110,7 +114,8 @@ mean_f1 <- function(cm){
 # Preparing results tables
 ```{r}
 mains_f1 <- c()
-summ_mains <- data.frame(File = NA, n = 0, Method = NA, Clusters = 0, Partitions = 0, Mean_F1 = 0)
+summ_mains <- data.frame(File = NA, n = 0, Method = NA, Clusters = 0, Partitions = 0, Mean_F1 = 0,
+                         User = 0, System = 0, Elapsed = 0)
 subs_f1 <- c()
 summ_subs <- data.frame(File = NA, n = 0, Method = NA, Clusters = 0, Partitions = 0, Population = NA, 
                         F1 = 0, Sub_clusters = 0, Sub_partitions = 0, Mean_F1 = 0)
@@ -119,7 +124,11 @@ summ_subs <- data.frame(File = NA, n = 0, Method = NA, Clusters = 0, Partitions 
 # UMAP dimensionality reduction
 ```{r}
 set.seed(params$seed)
+
+ptm <- proc.time() # measuring CPU time
 reduction <- umap(ff@exprs, random_state = params$seed)
+umap_time <- proc.time() - ptm
+
 colnames(reduction$layout) <- c("UMAP_1", "UMAP_2")
 ```
 
@@ -130,6 +139,14 @@ umap_df <- cbind(as.data.frame(reduction$layout), as.data.frame(metalabels),
               as.data.frame(sublabels))
 cytof_clusterPlot(data = umap_df, xlab = "UMAP_1", ylab = "UMAP_2", point_size = 0.5, labelRepel = F,
                   cluster = "metalabels", sampleLabel = FALSE, labelSize = 3, title = "Main populations")
+```
+
+```{r}
+# Export plot
+png(paste(params$results_dir, "/umap_", params$file, ".png", sep = ""), res=150, width = 1800, height = 1000)
+cytof_clusterPlot(data = umap_df, xlab = "UMAP_1", ylab = "UMAP_2", point_size = 0.5, labelRepel = T,
+                  cluster = "metalabels", sampleLabel = FALSE, labelSize = 3, title = "Main populations")
+dev.off()
 ```
 
 ## Data visualization: subpopulations 
@@ -145,7 +162,7 @@ for(i in 1:(length(levels(metalabels)) - 1)){
 
 # Clustering/partitioning
 ## `FlowSOM`
-```{r}
+```{r }
 # Parameters
 method <- "FlowSOM"
 k <- 0
@@ -153,14 +170,16 @@ k <- 0
 for(i in 1:length(clusters)){
   # META-CLUSTERING
   set.seed(params$seed)
+  
+  ptm <- proc.time() # measuring CPU time
   fs <- FlowSOM(ff, compensate = F,transform = F, scale = F,
                 colsToUse = colnames(ff@exprs), nClus = clusters[i], seed = params$seed)
+  ptm <- proc.time() - ptm
+  
   clustering <- fs$metaclustering[fs$FlowSOM$map$mapping[,1]]
   
   ### MAIN POPULATIONS
-  # number of main populations, without the outliers
-  n <- length(levels(metalabels)) - 1
-  
+
   # MATCHING META-LABELS AND PREDICTIONS (cell level)
   matched <- matching(clustering, metalabels)
   main_matched <-  matched$preds
@@ -168,9 +187,9 @@ for(i in 1:length(clusters)){
 
   # COMPUTING THE CONFUSION MATRIX AND OTHER PERFORMANCE MEASUREMENTS
   cm <- confusionMatrix(data = factor(main_matched[metalabels != "outliers"], 
-                                     levels = levels(metalabels)[1:n]),
+                                     levels = levels(metalabels)[levels(metalabels) != "outliers"]),
                         reference = factor(metalabels[metalabels != "outliers"],
-                                           levels = levels(metalabels)[1:n]))
+                                           levels = levels(metalabels)[levels(metalabels) != "outliers"]))
 
   # Add the F1 values to a list 
   f1_temp <- cm$byClass[, "F1"]
@@ -180,7 +199,7 @@ for(i in 1:length(clusters)){
   mf1 <- mean_f1(cm)
   # Storing the result 
   summ_mains[i,] <- c(params$file, nrow(ff@exprs), method, clusters[i],
-                      number_partitions, mf1)
+                      number_partitions, mf1, c(ptm[1] + ptm[4], ptm[2] + ptm[5], ptm[3]))
   
   # FOR VISUALIZATION
   # Print the unmatched cross table:
@@ -246,13 +265,13 @@ method <- "RPhenograph"
 k <- nrow(summ_subs)
 
 # CLUSTERING
+ptm <- proc.time()
 pred <- Rphenograph(ff@exprs) # default k = 30 nearest neighbours
 clustering <- pred$membership
+ptm <- proc.time() - ptm
 
 ### MAIN POPULATIONS
-# number of main populations, without the outliers
-n <- length(levels(metalabels)) - 1
-  
+
 # MATCHING META-LABELS AND PREDICTIONS
 matched <- matching(clustering, metalabels)
 main_matched <-  matched$preds
@@ -260,9 +279,9 @@ number_partitions <- length(table(matched$m))
 
 # COMPUTING THE CONFUSION MATRIX AND OTHER PERFORMANCE MEASUREMENTS
 cm <- confusionMatrix(data = factor(main_matched[metalabels != "outliers"],
-                                    levels = levels(metalabels)[1:n]),
+                                    levels = levels(metalabels)[levels(metalabels) != "outliers"]),
                         reference = factor(metalabels[metalabels != "outliers"],
-                                           levels = levels(metalabels)[1:n]))
+                                           levels = levels(metalabels)[levels(metalabels) != "outliers"]))
 # Add the F1 values to a list 
 f1_temp <- cm$byClass[, "F1"]
 mains_f1 <- c(mains_f1, f1_temp)
@@ -272,7 +291,7 @@ mf1 <- mean_f1(cm)
 # Storing the result 
 nc <- length(matched$m) # predicted clusters
 summ_mains[(nrow(summ_mains)+1),] <- c(params$file, nrow(ff@exprs), method, 
-                                       nc, number_partitions, mf1)
+                                       nc, number_partitions, mf1, c(ptm[1] + ptm[4], ptm[2] + ptm[5], ptm[3]))
 # FOR VISUALIZATION
 print(matched$t)
 print(cm$table)
@@ -333,14 +352,15 @@ method <- "UMAP + flowPeaks"
 k <- nrow(summ_subs)
 
 # CLUSTERING
+ptm <- proc.time() # measuring CPU time
 red_data <- as.matrix(reduction$layout)
 pred <-  flowPeaks(red_data)
+ptm <- proc.time() - ptm
+
 clustering <- pred$peaks.cluster
 
 ### MAIN POPULATIONS
-# number of main populations, without the outliers
-n <- length(levels(metalabels)) - 1
-  
+
 # MATCHING LABELS AND PREDICTIONS
 matched <- matching(clustering, metalabels)
 main_matched <-  matched$preds
@@ -348,9 +368,9 @@ number_partitions <- length(table(matched$m))
 
 # COMPUTING THE CONFUSION MATRIX AND OTHER PERFORMANCE MEASUREMENTS
 cm <- confusionMatrix(data = factor(main_matched[metalabels != "outliers"],
-                                    levels = levels(metalabels)[1:n]),
+                                    levels = levels(metalabels)[levels(metalabels) != "outliers"]),
                         reference = factor(metalabels[metalabels != "outliers"],
-                                           levels = levels(metalabels)[1:n]))
+                                           levels = levels(metalabels)[levels(metalabels) != "outliers"]))
 # Add the F1 values to a list 
 mains_f1 <- c(mains_f1, cm$byClass[, "F1"])
 
@@ -359,7 +379,10 @@ mf1 <- mean_f1(cm)
 # Storing the result 
 nc <- length(matched$m) # predicted clusters
 summ_mains[(nrow(summ_mains)+1),] <- c(params$file, nrow(ff@exprs), method, 
-                                       nc, number_partitions, mf1)
+                                       nc, number_partitions, mf1, 
+                                       c(umap_time[1] + umap_time[4] + ptm[1] + ptm[4], 
+                                         umap_time[2] + umap_time[5] + ptm[2] + ptm[5], 
+                                         umap_time[3] + ptm[3]))
 # FOR VISUALIZATION
 print(matched$t)
 print(cm$table)
@@ -420,12 +443,12 @@ method <- "UMAP + ClusterX"
 k <- nrow(summ_subs)
 
 # CLUSTERING
+ptm <- proc.time()
 clustering <- cytof_cluster(reduction$layout, method = "ClusterX")
+ptm <- proc.time() - ptm
 
 ### MAIN POPULATIONS
-# number of main populations, without the outliers
-n <- length(levels(metalabels)) - 1
-  
+
 # MATCHING LABELS AND PREDICTIONS
 matched <- matching(clustering, metalabels)
 main_matched <-  matched$preds
@@ -433,9 +456,9 @@ number_partitions <- length(table(matched$m))
 
 # COMPUTING THE CONFUSION MATRIX AND OTHER PERFORMANCE MEASUREMENTS
 cm <- confusionMatrix(data = factor(main_matched[metalabels != "outliers"],
-                                    levels = levels(metalabels)[1:n]),
+                                    levels = levels(metalabels)[levels(metalabels) != "outliers"]),
                         reference = factor(metalabels[metalabels != "outliers"],
-                                           levels = levels(metalabels)[1:n]))
+                                           levels = levels(metalabels)[levels(metalabels) != "outliers"]))
   
 # Add the F1 values to a list 
 mains_f1 <- c(mains_f1, cm$byClass[, "F1"])
@@ -445,7 +468,10 @@ mf1 <- mean_f1(cm)
 # Storing the result 
 nc <- length(matched$m) # predicted clusters
 summ_mains[(nrow(summ_mains)+1),] <- c(params$file, nrow(ff@exprs), method, 
-                                       nc, number_partitions, mf1)
+                                       nc, number_partitions, mf1,
+                                       c(umap_time[1] + umap_time[4] + ptm[1] + ptm[4], 
+                                         umap_time[2] + umap_time[5] + ptm[2] + ptm[5], 
+                                         umap_time[3] + ptm[3]))
 # FOR VISUALIZATION
 print(matched$t)
 print(cm$table)
@@ -504,13 +530,16 @@ print(cm$table)
 ```{r}
 # mean F1 , main populations
 summ_mains[,6] <- as.numeric(summ_mains[,6])
-kable(summ_mains[,3:6], digits = 3)
+summ_mains[,7] <- as.numeric(summ_mains[,7])
+summ_mains[,8] <- as.numeric(summ_mains[,8])
+summ_mains[,9] <- as.numeric(summ_mains[,9])
+kable(summ_mains[,3:9], digits = 3)
 ```
 
-```{r, eval = T}
+```{r, eval = T }
 # export results (mean F1)
 write.table(summ_mains, 
-            file = "results/summ_mains.txt", append = T, sep = "\t", row.names = F, col.names = F)
+            file = file.path(params$results_dir,"summ_mains.txt"), append = T, sep = "\t", row.names = F, col.names = F)
 ```
 
 ```{r}
@@ -537,7 +566,7 @@ kable(main_pops_freq, digits = 3)
 
 ```{r, eval = T}
 # export plot
-png(paste("results/graph_MAINS_", params$file, ".png", sep = ""), res=150, width = 1400, height = 1400)
+png(paste(params$results_dir, "/graph_MAINS_", params$file, ".png", sep = ""), res=150, width = 1400, height = 1000)
 ggplot(df, aes(class, F1)) + geom_point(aes(size = frequencies, color = frequencies)) + 
   coord_flip() + ggtitle("F1 scores (main populations)") + ylim(0,1) + facet_wrap(.~method) + 
   scale_color_gradient2(low = "#820000", mid = "#ff00e8", high = "#2e00ff", midpoint = (max(main_pops_freq)-min(main_pops_freq))/2)
@@ -552,10 +581,10 @@ summ_subs[,10] <- as.numeric(summ_subs[,10])
 kable(summ_subs[,3:10], digits = 3)
 ```
 
-```{r, eval = T}
+```{r, eval = T }
 # export results (mean F1)
 write.table(summ_subs, 
-            file = "results/summ_subs.txt", append = T, sep = "\t", row.names = F, col.names = F)
+            file =  file.path(params$results_dir,"summ_subs.txt"), append = T, sep = "\t", row.names = F, col.names = F)
 ```
 
 ```{r}
@@ -578,7 +607,7 @@ ggplot(df, aes(class, F1)) + geom_point(aes(color = main_class)) +
 
 ```{r, eval = T}
 # export plot
-png(paste("results/graph_SUBS_", params$file, ".png", sep = ""), res=150, width = 1400, height = 2400)
+png(paste(params$results_dir, "/graph_SUBS_", params$file, ".png", sep = ""), res=150, width = 1400, height = 2400)
 ggplot(df, aes(class, F1)) + geom_point(aes(color = main_class)) + 
   coord_flip() + ggtitle("F1 scores (subpopulations)") + ylim(0,1) + facet_wrap(.~method) 
 dev.off()
