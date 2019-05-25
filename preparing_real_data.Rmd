@@ -1,10 +1,10 @@
 ---
-title: "real_02 sample 2 (temoin 1)"
+title: "real_02 sample 5 (temoin 4)"
 output: html_document
 params:
   experience: "real_02"
   file: "real_02.wsp"
-  sample: 2
+  sample: 5
   cells: 50000
   condition: "down_50"
 ---
@@ -230,15 +230,19 @@ autoplot(ff[], colnames(data)[4], colnames(data)[1])
 
 ## Export to .fcs
 ```{r, eval = T}
-write.FCS(ff, paste(params$condition, "_ff_", params$experience, "_", getSamples(ws)[s,"name"], ".fcs", sep = ""))
+write.FCS(ff, 
+          paste(params$condition, "_ff_", params$experience, "_", s, "_", 
+                getSamples(ws)[s,"name"], ".fcs", sep = ""))
 ```
 
 ## Save the labels and meta-labels
 ```{r, eval = T}
 saveRDS(data[, "labels"],
-        paste(params$condition, "_labels_", params$experience, "_", getSamples(ws)[s,"name"], sep = "")) 
+        paste(params$condition, "_labels_", params$experience, "_", s, "_", 
+              getSamples(ws)[s,"name"], sep = "")) 
 saveRDS(data[, "metalabels"],
-        paste(params$condition, "_metalabels_", params$experience, "_", getSamples(ws)[s,"name"], sep = "")) 
+        paste(params$condition, "_metalabels_", params$experience, "_", s, "_", 
+              getSamples(ws)[s,"name"], sep = "")) 
 ```
 
 ```{r}
