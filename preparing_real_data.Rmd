@@ -1,10 +1,10 @@
 ---
-title: "real_02 sample 5 (temoin 4)"
+title: "real_02 sample 2 (temoin 1)"
 output: html_document
 params:
   experience: "real_02"
   file: "real_02.wsp"
-  sample: 5
+  sample: 2
   cells: 50000
   condition: "down_50"
 ---
@@ -18,13 +18,19 @@ library(flowWorkspace)
 library(caret)
 ```
 
+# Introduction
+An `R Markdown` script has been developed in order to prepare flow cytometry data for algorithm benchmarking. The data has been previously pre-treated and gated in `FlowJo`. This script enables importing and exploring the data, applying the Boolean strategy performed on `FlowJo`, labelling the examples according to this gating, performing down-sampling and exporting the data for further analysis. 
+
+# Data
+This script is designed for a five-parameter panel allowing to classify 5 main populations and potentially 20 subpopulations.
+
 # Parameters
 ```{r}
 params
 ```
 
-# Importing data from FlowJo workspace
-Open FlowJo workspace
+# Importing data from FlowJo workspace  (`.wsp`)
+The `FlowJo` workspace is open using `openWorkspace()` from the `flowWorkspace` package.
 ```{r}
 (ws <-  openWorkspace(params$file))
 ```
@@ -57,7 +63,7 @@ getSamples(ws)[s,]
 getSamples(ws)[s,"name"]
 ```
 
-Data:
+We can extract information and a descriptive analysis:
 ```{r}
 gs@data[[s]]
 ```
@@ -66,17 +72,15 @@ gs@data[[s]]
 summary(gs@data[[s]])
 ```
 
-Counts:
+We can extract the cell counts for each gate:
 ```{r}
 getPopStats(gs[[s]])
 ```
 
-Variation between `FlowJo` and `openCyto` counts:
+`openCyto` frequencies and counts are the result of applying the imported gating strategy on the data. (The `openCyto`package is included in `flowWorkspace`). The `xml` frequencies and counts have been obtained with the same gating strategy on `FlowJo`. There is often a slight variation between `FlowJo` and `openCyto` counts:
 ```{r}
 plotPopCV(gs[[s]])
 ```
-
-(The `openCyto`package is included in `flowWorkspace`).
 
 Extracting the data
 ```{r}
@@ -92,7 +96,7 @@ Preparing the data frame
 head(data)
 ```
 
-We are just interested in columns 7-11
+We are interested in columns 7-11
 ```{r}
 data <- data[,7:11]
 data <- as.data.frame(data)
@@ -112,14 +116,13 @@ table(nkt)
 ```
 
 
-Let's first see which cell populations we want to label:
-
+We can list the nodes with their ancestry:
 ```{r}
 getNodes(gs)
 ```
 
 ## CELLS
-We are just interested in viable, single cells lymphocytes (no monocytes): node 5.
+We are only interested in viable, single cells lymphocytes (no monocytes): node 5.
 ```{r}
 nodes[5]
 cells <- getIndices(gs[[s]], nodes[5])
@@ -206,8 +209,8 @@ colnames(data)[1:5] <-  c("CD3", "CD4", "CD8", "CD56", "CD19")
 colnames(data)
 ```
 
-## Downsampling
-Based on "labels".
+## Down-sampling
+We use the `createDataPartition()` function from the `caret` package. This function generates partitions with representative frequencies for the indicated classes. We are going to base the partition on the tag "labels" (the subpopulations).
 ```{r}
 p <- params$cells/nrow(data)
 set.seed(42)
@@ -223,28 +226,36 @@ ff <- new("flowFrame", exprs = as.matrix(data[,1:5])) # 1:5 markers, w/o the lab
 summary(ff)
 ```
 
+Visualization
 ```{r}
 library(ggcyto)
 autoplot(ff[], colnames(data)[4], colnames(data)[1])
 ```
 
-## Export to .fcs
+## Exporting to `.fcs`
 ```{r, eval = T}
-write.FCS(ff, 
-          paste(params$condition, "_ff_", params$experience, "_", s, "_", 
-                getSamples(ws)[s,"name"], ".fcs", sep = ""))
+write.FCS(ff, paste(params$condition, "_ff_", params$experience, "_", getSamples(ws)[s,"name"], ".fcs", sep = ""))
+```
+
+## Exporting the sublabels groups:
+```{r}
+sublabels_levels <- list("NKT" = c("NKT_4", "NKT_DP", "NKT_8", "NKT_DN"),
+                         "NK" = c("NK_4", "NK_DP", "NK_8", "NK_DN"),
+                         "T" = c("T_cells_4", "T_cells_DP", "T_cells_8", "T_cells_DN"),
+                         "B" = c("B_4", "B_DP", "B_8", "B_DN"),
+                         "NO_BTNK" = c("NO_BTNK_4", "NO_BTNK_DP", "NO_BTNK_8", "NO_BTNK_DN"))
+saveRDS(sublabels_levels, paste("sublabels_levels", params$experience, sep = "_"))
 ```
 
 ## Save the labels and meta-labels
 ```{r, eval = T}
 saveRDS(data[, "labels"],
-        paste(params$condition, "_labels_", params$experience, "_", s, "_", 
-              getSamples(ws)[s,"name"], sep = "")) 
+        paste(params$condition, "_labels_", params$experience, "_", getSamples(ws)[s,"name"], sep = "")) 
 saveRDS(data[, "metalabels"],
-        paste(params$condition, "_metalabels_", params$experience, "_", s, "_", 
-              getSamples(ws)[s,"name"], sep = "")) 
+        paste(params$condition, "_metalabels_", params$experience, "_", getSamples(ws)[s,"name"], sep = "")) 
 ```
 
+# Closing the workspace
 ```{r}
 closeWorkspace(ws)
 ```
