@@ -1,0 +1,318 @@
+---
+title: "Algorithm benchmarking script, 11 parameters"
+subtitle: "Experience `real_03`, sample `003`, downsampled"
+output:
+  html_document:
+    number_sections: yes
+    toc: yes
+    toc_float: yes
+    code_folding: hide
+    theme: united
+    highlight: tango
+author: Anna Guadall
+params:
+  file: "down_100_ff_real_03_003.fcs"
+  labels: "down_100_labels_real_03_003"
+  seed: 42
+  clusters: "5,10,15,20,30,40,50,60"
+  results_dir: "results_100"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = T, message = FALSE, cache = T)
+```
+
+```{r libraries, message=FALSE}
+library(FlowSOM)
+library(caret)
+library(cytofkit)
+library(flowPeaks)
+library(ggplot2)
+library(gridExtra)
+library(umap)
+library(knitr)
+```
+
+# Reading the data
+```{r}
+# Importing the fcs file
+ff <- flowCore::read.FCS(params$file)
+
+# Importing the labels
+labels <- readRDS(params$labels) 
+
+# Number of populations
+n_pops <- length(levels(labels)) - 1
+```
+
+```{r}
+# Computing  populations' frequencies
+(pop_freq <- (prop.table(table(labels)))*100)
+cbind(count(labels), round(pop_freq, 2))
+```
+
+File: ``r params$file``   
+``r nrow(ff@exprs)`` cells.  
+`r n_pops` populations.  
+`r ncol(ff@exprs)` parameters.  
+
+# Number of clusters (For `FlowSOM`)
+```{r}
+clusters <- c(eval(parse(text = paste("c(", params$clusters, ")", sep = ""))))
+```
+
+# Functions
+Matching labels and predictions:
+```{r}
+matching <- function(prediction, labels){
+  # cross table
+  t <- table(prediction, labels)
+  
+  # Finding and sorting row maximums:
+  max_values <- apply(t, 1, max)
+  sorted_max_values <- sort(max_values)
+  
+  # Finding the cell population (columns) 
+  # with a higher number of cells for each cluster (rows):
+  m <- apply(t, 1, which.max)
+  
+  # Empty list 
+  matched_preds <- rep("NA", length(prediction))
+
+  # Replacing the numbers of the clusters by the names of the cell types:
+  for(i in 1:length(prediction)){
+    for(j in 1:length(m)){ # Number of predicted clusters
+      if(prediction[i] == names(sorted_max_values)[j]){ 
+        matched_preds[i] <- levels(labels)[m[[names(sorted_max_values)[j]]]]
+      }
+    }
+  }
+
+  # Factorize matched predictions 
+  matched_preds <- factor(matched_preds, levels = levels(labels))
+  
+  matched <- list("preds" = matched_preds, "m" = m, "t" = t)
+  return(matched)
+}
+```
+
+Computing the mean F1:
+```{r, echo = T}
+mean_f1 <- function(cm){
+  # Extracting the F1 values
+  # cm: confusion matrix
+  f1_list <- cm$byClass[,"F1"]
+  # removing NAs
+  f1_list <- f1_list[!is.na(f1_list)] 
+  # Computing mean F1 
+  return(mean(f1_list))
+}
+```
+
+# Preparing results tables
+```{r}
+mains_f1 <- c()
+summ_mains <- data.frame(File = NA, n = 0, Method = NA, Clusters = 0, Partitions = 0, Mean_F1 = 0,
+                         User = 0, System = 0, Elapsed = 0)
+```
+
+# UMAP dimensionality reduction
+```{r}
+set.seed(params$seed)
+
+ptm <- proc.time() # measuring CPU time
+reduction <- umap(ff@exprs, random_state = params$seed)
+umap_time <- proc.time() - ptm
+
+colnames(reduction$layout) <- c("UMAP_1", "UMAP_2")
+```
+
+## Data visualization
+```{r}
+# preparing data for plotting on UMAP:
+umap_df <- cbind(as.data.frame(reduction$layout), as.data.frame(labels))
+cytof_clusterPlot(data = umap_df, xlab = "UMAP_1", ylab = "UMAP_2", point_size = 0.5, labelRepel = T,
+                  cluster = "labels", sampleLabel = FALSE, labelSize = 3, title = "Labels",,
+                  clusterColor = c("darkgoldenrod1", "blue4", "blueviolet", "red", "turquoise", 
+                                   "burlywood3", "cadetblue", "chartreuse", "chartreuse4", "chocolate1",
+                                   "coral1", "cornflowerblue", "yellow", "cyan", "blue",
+                                   "darkgrey", "darkmagenta", "deeppink1", "deeppink4", "black"))
+```
+
+```{r}
+# Export plot
+png(paste(params$results_dir, "/umap_", params$file, ".png", sep = ""), res=150, width = 1800, height = 1000)
+cytof_clusterPlot(data = umap_df, xlab = "UMAP_1", ylab = "UMAP_2", point_size = 0.5, labelRepel = T,
+                  cluster = "labels", sampleLabel = FALSE, labelSize = 3, title = "Labels",
+                  clusterColor = c("darkgoldenrod1", "blue4", "blueviolet", "red", "turquoise", 
+                                   "burlywood3", "cadetblue", "chartreuse", "chartreuse4", "chocolate1",
+                                   "coral1", "cornflowerblue", "yellow", "cyan", "blue",
+                                   "darkgrey", "darkmagenta", "deeppink1", "deeppink4", "black"))
+dev.off()
+```
+
+# Clustering/partitioning
+## `FlowSOM`
+```{r}
+# Parameters
+method <- "FlowSOM"
+
+for(i in 1:length(clusters)){
+  # META-CLUSTERING
+  set.seed(params$seed)
+  
+  ptm <- proc.time() # measuring CPU time
+  fs <- FlowSOM(ff, compensate = F,transform = F, scale = F,
+                colsToUse = colnames(ff@exprs), nClus = clusters[i], seed = params$seed)
+  ptm <- proc.time() - ptm
+  
+  clustering <- fs$metaclustering[fs$FlowSOM$map$mapping[,1]]
+  
+  # MATCHING LABELS AND PREDICTIONS
+  matched <- matching(clustering, labels)
+  number_partitions <- length(table(matched$m))
+  
+  # COMPUTING THE CONFUSION MATRIX AND OTHER PERFORMANCE MEASUREMENTS
+  cm <- confusionMatrix(data = factor(matched$preds[labels != "outliers"],
+                                      levels = levels(labels)[levels(labels) != "outliers"]),
+                        reference = factor(labels[labels != "outliers"],
+                                           levels = levels(labels)[levels(labels) != "outliers"]))
+  # Add the F1 values to a list 
+  mains_f1 <- c(mains_f1, cm$byClass[, "F1"])
+  
+  # COMPUTE MEAN F1 and WEIGHTED MEAN F1
+  mf1 <- mean_f1(cm)
+  # Storing the result 
+  summ_mains[i,] <- c(params$file, nrow(ff@exprs), method, clusters[i],
+                      number_partitions, mf1, c(ptm[1] + ptm[4], ptm[2] + ptm[5], ptm[3]))
+  
+  # FOR VISUALIZATION
+  # Print the unmatched cross table:
+  cat("\n", method, clusters[i], "clusters\n")
+  #print(matched$t)
+  # Print the matched confusion matrix:
+  print(cm$table)
+}
+```
+
+## `RphenoGraph`
+```{r}
+# Parameters
+method <- "RPhenograph"
+
+# CLUSTERING
+ptm <- proc.time()
+pred <- Rphenograph(ff@exprs) # default k = 30 nearest neighbours
+ptm <- proc.time() - ptm
+
+clustering <- pred$membership
+
+# MATCHING LABELS AND PREDICTIONS
+matched <- matching(clustering, labels)
+number_partitions <- length(table(matched$m))
+
+# COMPUTING THE CONFUSION MATRIX AND OTHER PERFORMANCE MEASUREMENTS
+cm <- confusionMatrix(data = factor(matched$preds[labels != "outliers"],
+                                    levels = levels(labels)[levels(labels) != "outliers"]),
+                      reference = factor(labels[labels != "outliers"],
+                                         levels = levels(labels)[levels(labels) != "outliers"]))
+# Add the F1 values to a list 
+mains_f1 <- c(mains_f1, cm$byClass[, "F1"])
+
+# COMPUTE MEAN F1 and WEIGHTED MEAN F1
+mf1 <- mean_f1(cm)
+# Storing the result 
+nc <- length(matched$m) # predicted clusters
+summ_mains[(nrow(summ_mains)+1),] <- c(params$file, nrow(ff@exprs), method, nc,
+                    number_partitions, mf1, c(ptm[1] + ptm[4], ptm[2] + ptm[5], ptm[3]))
+# FOR VISUALIZATION
+#print(matched$t)
+print(cm$table)
+```
+
+## UMAP + `flowPeaks` 
+```{r}
+# Parameters
+method <- "UMAP + flowPeaks"
+
+# CLUSTERING
+ptm <- proc.time() # measuring CPU time
+red_data <- as.matrix(reduction$layout)
+pred <-  flowPeaks(red_data)
+ptm <- proc.time() - ptm
+
+clustering <- pred$peaks.cluster
+
+# MATCHING LABELS AND PREDICTIONS
+matched <- matching(clustering, labels)
+number_partitions <- length(table(matched$m))
+
+# COMPUTING THE CONFUSION MATRIX AND OTHER PERFORMANCE MEASUREMENTS
+cm <- confusionMatrix(data = factor(matched$preds[labels != "outliers"],
+                                    levels = levels(labels)[levels(labels) != "outliers"]),
+                      reference = factor(labels[labels != "outliers"],
+                                         levels = levels(labels)[levels(labels) != "outliers"]))
+# Add the F1 values to a list 
+mains_f1 <- c(mains_f1, cm$byClass[, "F1"])
+
+# COMPUTE MEAN F1 and WEIGHTED MEAN F1
+mf1 <- mean_f1(cm)
+# Storing the result 
+nc <- length(matched$m) # predicted clusters
+summ_mains[(nrow(summ_mains)+1),] <- c(params$file, nrow(ff@exprs), method, nc, number_partitions, mf1, 
+                                       c(umap_time[1] + umap_time[4] + ptm[1] + ptm[4], 
+                                         umap_time[2] + umap_time[5] + ptm[2] + ptm[5], 
+                                         umap_time[3] + ptm[3]))
+
+# FOR VISUALIZATION
+print(matched$t)
+print(cm$table)
+```
+
+# Evaluation
+## Main populations
+```{r}
+# mean F1 , main populations
+summ_mains[,6] <- as.numeric(summ_mains[,6])
+summ_mains[,7] <- as.numeric(summ_mains[,7])
+summ_mains[,8] <- as.numeric(summ_mains[,8])
+summ_mains[,9] <- as.numeric(summ_mains[,9])
+kable(summ_mains[,3:9], digits = 3)
+```
+
+```{r, eval = T}
+# export results (mean F1)
+write.table(summ_mains, 
+            file =  file.path(params$results_dir,"summ_mains.txt"), append = T, sep = "\t", row.names = F, col.names = F)
+```
+
+```{r}
+# preparing for plot
+np <- length(levels(labels))-1 # number of main populations
+
+method <- c(paste("FlowSOM", clusters, sep = "_"), "RPhenograph", "UMAP + flowPeaks")
+method <- factor(method, levels = c("RPhenograph", "UMAP + flowPeaks", paste("FlowSOM", clusters, sep = "_")))
+
+class <- factor(levels(labels)[1:np], levels = levels(labels)[1:np])
+df <- data.frame(class = rep(class, length(method)), method = rep(method, each = np), 
+                 F1 = mains_f1, frequencies = rep(pop_freq[1:np], length(method)))
+```
+
+```{r, fig.width=7, fig.height=7}
+ggplot(df, aes(class, F1)) + geom_point(aes(size = frequencies, color = frequencies)) + 
+  coord_flip() + ggtitle("F1 scores") + ylim(0,1) + facet_wrap(.~method) + 
+  scale_color_gradient2(low = "#820000", mid = "#ff00e8", high = "#2e00ff", midpoint = (max(pop_freq)-min(pop_freq))/2)
+```
+
+```{r, eval = T}
+# export plot
+png(paste(params$results_dir, "/graph_MAINS_", params$file, ".png", sep = ""), res=150, width = 1400, height = 1400)
+ggplot(df, aes(class, F1)) + geom_point(aes(size = frequencies, color = frequencies)) + 
+  coord_flip() + ggtitle("F1 scores") + ylim(0,1) + facet_wrap(.~method) + 
+  scale_color_gradient2(low = "#820000", mid = "#ff00e8", high = "#2e00ff", midpoint = (max(pop_freq)-min(pop_freq))/2)
+dev.off()
+```
+
+```{r}
+kable(pop_freq, digits = 3)
+```
