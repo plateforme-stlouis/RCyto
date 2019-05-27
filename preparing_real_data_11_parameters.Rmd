@@ -1,0 +1,223 @@
+---
+title: "Preparing real data: 11 parameters"
+output: html_document
+params:
+  experience: "real_03_003"
+  file: "real_03_003_v2.wsp"
+  sample: 1
+  cells: 100000
+  condition: "down_100"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, cache = F)
+```
+
+```{r}
+library(flowWorkspace)
+library(caret)
+```
+
+# Introduction
+An `R Markdown` script has been developed in order to prepare flow cytometry data for algorithm benchmarking. The data has been previously pre-treated and gated in `FlowJo`. This script enables importing and exploring the data, applying the Boolean strategy performed on `FlowJo`, labelling the examples according to this gating, performing down-sampling and exporting the data for further analysis. 
+
+# Data
+This experimental design includes 11 parameters or markers.
+
+# Parameters
+```{r}
+params
+```
+
+# Importing data from FlowJo workspace  (`.wsp`)
+The `FlowJo` workspace is open using `openWorkspace()` from the `flowWorkspace` package.
+```{r}
+(ws <-  openWorkspace(params$file))
+```
+
+# Parsing the workspace: GATING SET
+```{r}
+gs <-  parseWorkspace(ws, name = 2, sampNloc="sampleNode") # 1: All Samples, 2: group
+```
+
+```{r}
+gs@data
+```
+
+Gating strategy:
+```{r}
+plot(gs)
+```
+
+```{r}
+png(paste("exports/gating_", params$experience, ".png", sep = ""), res=150, width = 1400, height = 1000)
+plot(gs)
+dev.off()
+```
+
+# Extracting the data from one sample
+The sample is defined in the parameters:
+```{r}
+(s <- params$sample)
+```
+
+```{r}
+getSamples(ws)[s,]
+```
+
+```{r}
+getSamples(ws)[s,"name"]
+```
+
+Data:
+```{r}
+gs@data[[s]]
+```
+
+```{r}
+summary(gs@data[[s]])
+```
+
+Counts:
+```{r}
+getPopStats(gs[[s]])
+```
+
+Variation between `FlowJo` and `openCyto` counts:
+```{r, fig.height=10}
+plotPopCV(gs[[s]])
+```
+
+Extracting the data
+```{r}
+data <- exprs(gs@data[[s]])
+# Or, equivalently:
+# data  <- getData(gs[[s]])
+nrow(data)
+```
+
+## Extracting cell labels
+Preparing the data frame
+```{r}
+colnames(data)
+```
+
+We are interested in columns 7-12, 14-18:
+```{r}
+colnames(data)[c(c(7:12), c(14:18))]
+```
+
+```{r}
+data <- data[,c(c(7:12), c(14:18))]
+data <- as.data.frame(data)
+```
+
+Getting the nodes (or the populations):
+```{r}
+(nodes <- getNodes(gs, path = "auto"))
+```
+
+Let's see which cell populations we want to label:
+```{r}
+#getNodes(gs)
+```
+
+## CELLS
+We are only interested in viable, single cells lymphocytes (no monocytes): node 6.
+```{r}
+nodes[6]
+cells <- getIndices(gs[[s]], nodes[6])
+length(cells)
+table(cells)
+```
+
+Let's tag them as "lymphocytes". The rest, will be "other_events".
+```{r}
+data$cells <-  "other_events" 
+data$cells <- as.factor(ifelse(cells, "lymphocytes", data$cells))
+data$cells <- ifelse(cells, "lymphocytes", data$cells)
+table(data$cells)
+```
+
+## LABELS
+19 populations
+```{r}
+label_list <- c("8" = "NO_BTNK", "16" = "NK", "17" = "NKT", 
+                "10" = "B_S_M_27pos", "13" = "B_UNSWCH", "14" = "B_NAIVE", "15" = "B_S_M_27neg",
+                "22" = "T_4_EMRA", "23" = "T_4_TN", "27" = "T_4_TCM", "28" = "T_4_TEM", "24" = "T4_RA_nTreg", "29" = "T4_RO_nTreg",
+                "31" = "T_8_EMRA", "34" = "T_8_TN", "32" = "T_8_TCM", "33" = "T_8_TEM", 
+                "35" = "T_DP", "36" = "T_DN")
+names(label_list)
+```
+
+Labelling:
+```{r}
+data$label_list <- "outliers"
+
+for(i in names(label_list)){
+    indices <- getIndices(gs[[s]], nodes[as.numeric(i)])
+    data$label_list <- ifelse(indices, label_list[[i]], data$label_list)
+}
+
+data$label_list <- factor(data$label_list, levels = c(label_list, "outliers"))
+table(data$label_list)
+```
+
+## LYMPHOCYTES
+We are going to keep only the living, single cell lymphocytes:
+```{r}
+data <- data[data$cells == "lymphocytes",]
+nrow(data)
+```
+
+# Export data 
+## Conversion to `FlowFrame` class objects
+```{r}
+colnames(data)
+```
+
+Replacing the fluorophores by the markers:
+```{r}
+colnames(data)[1:11] <-  c("CD56", "CD8a_IgD", "CD38", "CD19", "CD127", "CCR7",
+                           "CD25", "CD4", "CD3", "CD27", "CD45RA")
+colnames(data)
+```
+
+## Down-sampling
+We use the `createDataPartition()` function from the `caret` package. This function generates partitions with representative frequencies for the indicated classes. We are going to base the partition on the tag "labels" (the subpopulations).
+```{r}
+p <- params$cells/nrow(data)
+subsample <- createDataPartition(data$label_list, p = p, list = F)
+data <- data[subsample, ]
+nrow(data)
+```
+
+## Conversion to `FlowFrame` class objects
+```{r}
+library(flowCore)
+ff <- new("flowFrame", exprs = as.matrix(data[, 1:11])) # 1:11 markers, w/o the labels
+summary(ff)
+```
+
+Visulaization
+```{r}
+library(ggcyto)
+autoplot(ff[], "CD56", "CD3")
+```
+
+## Exporting to `.fcs`
+```{r, eval = T}
+write.FCS(ff, paste(params$condition, "_ff_", params$experience, ".fcs", sep = ""))
+```
+
+## Saving the labels 
+```{r}
+saveRDS(data[, "label_list"], paste(params$condition, "labels",  params$experience, sep = "_"))
+```
+
+## Closing the workspace
+```{r}
+closeWorkspace(ws)
+```
+
+
