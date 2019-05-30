@@ -1,6 +1,6 @@
 ---
 title: "Algorithm benchmarking script, 11 parameters"
-subtitle: "Experience `real_03`, sample `003`, downsampled"
+subtitle: "Experience `real_03`, sample `012`, downsampled"
 output:
   html_document:
     number_sections: yes
@@ -11,11 +11,11 @@ output:
     highlight: tango
 author: Anna Guadall
 params:
-  file: "down_100_ff_real_03_003.fcs"
-  labels: "down_100_labels_real_03_003"
+  file: "down_400_ff_real_03_012.fcs"
+  labels: "down_400_labels_real_03_012"
   seed: 42
   clusters: "5,10,15,20,30,40,50,60"
-  results_dir: "results_100"
+  results_dir: "results_400"
 ---
 
 ```{r setup, include=FALSE}
@@ -127,6 +127,11 @@ umap_time <- proc.time() - ptm
 colnames(reduction$layout) <- c("UMAP_1", "UMAP_2")
 ```
 
+```{r umap time}
+write.table(t(c(params$file, c(umap_time[1] + umap_time[4], umap_time[2] + umap_time[5], umap_time[3]))), 
+            file = file.path(params$results_dir,"umap_times.txt"), append = T, sep = "\t", row.names = F, col.names = F)
+```
+
 ## Data visualization
 ```{r}
 # preparing data for plotting on UMAP:
@@ -135,8 +140,8 @@ cytof_clusterPlot(data = umap_df, xlab = "UMAP_1", ylab = "UMAP_2", point_size =
                   cluster = "labels", sampleLabel = FALSE, labelSize = 3, title = "Labels",,
                   clusterColor = c("darkgoldenrod1", "blue4", "blueviolet", "red", "turquoise", 
                                    "burlywood3", "cadetblue", "chartreuse", "chartreuse4", "chocolate1",
-                                   "coral1", "cornflowerblue", "yellow", "cyan", "blue",
-                                   "darkgrey", "darkmagenta", "deeppink1", "deeppink4", "black"))
+                                   "plum1", "cornflowerblue", "yellow", "cyan", "blue",
+                                   "darkgrey","khaki1", "deeppink1", "deeppink4", "black"))
 ```
 
 ```{r}
@@ -146,8 +151,8 @@ cytof_clusterPlot(data = umap_df, xlab = "UMAP_1", ylab = "UMAP_2", point_size =
                   cluster = "labels", sampleLabel = FALSE, labelSize = 3, title = "Labels",
                   clusterColor = c("darkgoldenrod1", "blue4", "blueviolet", "red", "turquoise", 
                                    "burlywood3", "cadetblue", "chartreuse", "chartreuse4", "chocolate1",
-                                   "coral1", "cornflowerblue", "yellow", "cyan", "blue",
-                                   "darkgrey", "darkmagenta", "deeppink1", "deeppink4", "black"))
+                                   "plum1", "cornflowerblue", "yellow", "cyan", "blue",
+                                   "darkgrey", "khaki1", "deeppink1", "deeppink4", "black"))
 dev.off()
 ```
 
@@ -311,6 +316,13 @@ ggplot(df, aes(class, F1)) + geom_point(aes(size = frequencies, color = frequenc
   coord_flip() + ggtitle("F1 scores") + ylim(0,1) + facet_wrap(.~method) + 
   scale_color_gradient2(low = "#820000", mid = "#ff00e8", high = "#2e00ff", midpoint = (max(pop_freq)-min(pop_freq))/2)
 dev.off()
+```
+
+```{r export scores}
+# export results (F1 scores main populations)
+df$file = params$file
+write.table(df, 
+            file = file.path(params$results_dir,"scores_pops.txt"), append = T, sep = "\t", row.names = F, col.names = F)
 ```
 
 ```{r}
