@@ -1,6 +1,6 @@
 ---
 title: "Algorithm benchmarking script. Experimental design: 5 parameters"
-subtitle: "Experience `real_02`, sample `2` (`Temoin 1`), downsampled"
+subtitle: "Experience `real_02`, sample `3` (`Temoin 2`), downsampled"
 output:
   html_document:
     number_sections: yes
@@ -11,13 +11,13 @@ output:
     highlight: tango
 author: Anna Guadall
 params:
-  file: "down_50_ff_real_02_2_Specimen_001_Temoin1_003.fcs.fcs"
-  labels: "down_50_labels_real_02_2_Specimen_001_Temoin1_003.fcs"
-  metalabels: "down_50_metalabels_real_02_2_Specimen_001_Temoin1_003.fcs" 
+  file: "down_100_ff_real_02_3_Specimen_001_Temoin2_004.fcs.fcs"
+  labels: "down_100_labels_real_02_3_Specimen_001_Temoin2_004.fcs"
+  metalabels: "down_100_metalabels_real_02_3_Specimen_001_Temoin2_004.fcs" 
   sublabels_levels: "sublabels_levels_real_02"
   seed: 42
   clusters: "4,5,8,10,20"
-  results_dir: "results_50"
+  results_dir: "results_100"
 ---
 
 ```{r setup, include=FALSE}
@@ -56,7 +56,7 @@ File: ``r params$file``
 ``r nrow(ff@exprs)`` cells.  
 ``r length(levels(metalabels)) - 1`` main populations.  
 ``r length(levels(sublabels)) - 1`` subpopulations.  
-`r ncol(ff@exprs)` parameters.  
+``r ncol(ff@exprs)`` parameters.  
 
 # Number of clusters (For `FlowSOM`)
 ```{r}
@@ -130,6 +130,11 @@ reduction <- umap(ff@exprs, random_state = params$seed)
 umap_time <- proc.time() - ptm
 
 colnames(reduction$layout) <- c("UMAP_1", "UMAP_2")
+```
+
+```{r umap times}
+write.table(t(c(params$file, c(umap_time[1] + umap_time[4], umap_time[2] + umap_time[5], umap_time[3]))), 
+            file = file.path(params$results_dir,"umap_times.txt"), append = T, sep = "\t", row.names = F, col.names = F)
 ```
 
 ## Data visualization: main populations 
@@ -558,6 +563,13 @@ df <- data.frame(class = rep(class, length(method)), method = rep(method, each =
 ggplot(df, aes(class, F1)) + geom_point(aes(size = frequencies, color = frequencies)) + 
   coord_flip() + ggtitle("F1 scores") + ylim(0,1) + facet_wrap(.~method) + 
   scale_color_gradient2(low = "#820000", mid = "#ff00e8", high = "#2e00ff", midpoint = (max(main_pops_freq)-min(main_pops_freq))/2)
+```
+
+```{r export scores}
+# export results (F1 scores main populations)
+df$file = params$file
+write.table(df, 
+            file = file.path(params$results_dir,"scores_pops.txt"), append = T, sep = "\t", row.names = F, col.names = F)
 ```
 
 ```{r}
