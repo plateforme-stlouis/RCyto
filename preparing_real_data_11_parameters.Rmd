@@ -183,6 +183,13 @@ colnames(data)[1:11] <-  c("CD56", "CD8a_IgD", "CD38", "CD19", "CD127", "CCR7",
 colnames(data)
 ```
 
+## Frequencies
+```{r export frequencies}
+pops_freq <- (prop.table(table(data$label_list)))*100
+
+saveRDS(pops_freq, paste("pops_freq", params$experience, s, sep = "_")) 
+```
+
 ## Down-sampling
 We use the `createDataPartition()` function from the `caret` package. This function generates partitions with representative frequencies for the indicated classes. We are going to base the partition on the tag "labels" (the subpopulations).
 ```{r}
