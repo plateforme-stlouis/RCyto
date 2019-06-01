@@ -68,10 +68,6 @@ matching <- function(prediction, labels){
   # cross table
   t <- table(prediction, labels)
   
-  # Finding and sorting row maximums:
-  max_values <- apply(t, 1, max)
-  sorted_max_values <- sort(max_values)
-  
   # Finding the cell population (columns) 
   # with a higher number of cells for each cluster (rows):
   m <- apply(t, 1, which.max)
@@ -82,8 +78,8 @@ matching <- function(prediction, labels){
   # Replacing the numbers of the clusters by the names of the cell types:
   for(i in 1:length(prediction)){
     for(j in 1:length(m)){ # Number of predicted clusters
-      if(prediction[i] == names(sorted_max_values)[j]){ 
-        matched_preds[i] <- levels(labels)[m[[names(sorted_max_values)[j]]]]
+      if(prediction[i] == names(m)[j]){
+      matched_preds[i] <- levels(labels)[m[[j]]] 
       }
     }
   }
