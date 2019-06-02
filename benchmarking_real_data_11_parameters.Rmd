@@ -133,7 +133,7 @@ write.table(t(c(params$file, c(umap_time[1] + umap_time[4], umap_time[2] + umap_
 # preparing data for plotting on UMAP:
 umap_df <- cbind(as.data.frame(reduction$layout), as.data.frame(labels))
 cytof_clusterPlot(data = umap_df, xlab = "UMAP_1", ylab = "UMAP_2", point_size = 0.5, labelRepel = T,
-                  cluster = "labels", sampleLabel = FALSE, labelSize = 3, title = "Labels",,
+                  cluster = "labels", sampleLabel = FALSE, labelSize = 3, title = "Labels",
                   clusterColor = c("darkgoldenrod1", "blue4", "blueviolet", "red", "turquoise", 
                                    "burlywood3", "cadetblue", "chartreuse", "chartreuse4", "chocolate1",
                                    "plum1", "cornflowerblue", "yellow", "cyan", "blue",
