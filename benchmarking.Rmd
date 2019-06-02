@@ -7,12 +7,14 @@ output:
     theme: journal
     toc: yes
     toc_float: yes
+  
 author: Anna Guadall
 params:
   file: "ff_05_2019-04-18.fcs"
   labels: "labels_05_2019-04-18"
   freqs: "props_05_2019-04-18"
   seed: 42
+  match: "new_match"
 ---
 
 ```{r setup, include=FALSE}
@@ -29,6 +31,7 @@ library(ggplot2)
 library(gridExtra)
 library(umap)
 library(knitr)
+library(Hmisc) # includes %nin% operator (not in)
 ```
 
 # Reading the data
@@ -36,21 +39,11 @@ library(knitr)
 # import the fcs file
 ff <- flowCore::read.FCS(params$file)
 
-# number of cells
-#n <- nrow(ff@exprs)
-
 # Import the labels
 labels <- readRDS(params$labels) # "labels" has c levels
 
 # number of populations
 c <- length(levels(labels))
-
-# Adding the label "unknown" to the labels:
-all_labels <- labels
-levels(all_labels) <- c(levels(labels), "unknown") # "all_labels" has c + 1 levels
-
-# Levels list
-all_levels <- levels(all_labels)
 ```
 
 # Random seeds
@@ -59,40 +52,46 @@ set.seed(params$seed)
 seeds <- sample(1:1000, 5, replace = F)
 ```
 
+```{r}
+# gave weird results on UMAP
+seeds <- c(543, 52, 70, 918, 910)
+```
+
 # Functions
 Matching labels and predictions:
 ```{r}
-matching <- function(prediction, labels, c, all_levels){
+matching <- function(prediction, labels){
   # cross table
   t <- table(prediction, labels)
   
-  # Finding the maximum number of each cell type (columns) on each cluster (rows):
-  m <- apply(t, 2, which.max)
+  # Finding the cell population (columns) 
+  # with a higher number of cells for each cluster (rows):
+  m <- apply(t, 1, which.max)
   
-  # Creating a list with n unknowns
-  matched_preds <- rep("unknown", length(prediction))
-  
+  # Empty list 
+  matched_preds <- rep("NA", length(prediction))
+
   # Replacing the numbers of the clusters by the names of the cell types:
   for(i in 1:length(prediction)){
-    for(j in 1:c){ 
+    for(j in 1:length(m)){ # Number of predicted clusters
       if(prediction[i] == names(m)[j]){
-        matched_preds[i] <- levels(labels)[m[[j]]] 
+      matched_preds[i] <- levels(labels)[m[[j]]] 
       }
     }
   }
-  
-  # Factorize matched predictions including the "unknown" level
-  matched_preds <- factor(matched_preds, levels = all_levels)
+
+  # Factorize matched predictions 
+  matched_preds <- factor(matched_preds, levels = levels(labels))
   
   matched <- list("preds" = matched_preds, "m" = m, "t" = t)
   return(matched)
 }
 ```
 
-In order to compare performances, we will use the F1 score, which is the harmonic average of the precision and recall. The F1 value ranges from 0 (worst performance) to 1 (best performance). One F1 value is computed for every cell type. The mean F1 will be computed for every method in order to give a global performance measure. There are two facts that must be taken into account:
+In order to compare performances, we will use the F1 score, which is the harmonic average of the precision and recall. The F1 value ranges from 0 (worst performance) to 1 (best performance). One F1 value is computed for every cell type. The mean F1 will be computed for every method in order to give a global performance measure. There are to facts that must be taken into account:
 
 1. The "unknown" class should not be used, as there is not such a class in the original sample.
-2. It is no possible to compute the F1 score for the unmatched classes. In this case, the result is "NA". Thus, we are going to replace NAs by zeroes.
+2. There is no possible to compute the F1 score for the unmatched classes. In this case, the result is "NA". Thus, we are going to replace NAs by zeroes.
 
 Computing the mean F1:
 ```{r}
@@ -101,9 +100,9 @@ mean_f1 <- function(cm, c){
   f1_list <- cm$byClass[,"F1"]
   # replacing NAs by zero
   f1_list[is.na(f1_list)] <-  0
-  # Computing mean F1 for all "c" cell labels (without the "unknowns")
+  # Computing mean F1 for all "c" cell labels
   # Storing the result in the environment
-  return(mean(f1_list[1:c]))
+  return(mean(f1_list))
 }
 ```
 
@@ -124,18 +123,17 @@ for(i in 1:length(seeds)){
   #PlotStars(fs$FlowSOM, backgroundValues = as.factor(fs$metaclustering))
 
   # Macth labels and predictions (cell level)
-  matched <- matching(mc_cell, labels, c, all_levels)
+  matched <- matching(mc_cell, labels)
   # returns 2 elements, matched$preds and matcheds$m
   
   # STORE THE PREDICTIONS (cell level)
-  # will I really need this???????????????? maybe for a final graph
   # Generate a name
   name_pred <- paste(method, "pred", i, sep = "_")
   # Assign the name to the prediction
   assign(name_pred, matched$preds)
   
   # COMPUTING THE CONFUSION MATRIX AND OTHER PERFORMANCE MEASUREMENTS
-  cm <- confusionMatrix(data = matched$preds, reference = all_labels)
+  cm <- confusionMatrix(data = matched$preds, reference = labels)
   # Print the unmatched cross table:
   print(matched$t)
   # Print the matched confusion matrix:
@@ -174,7 +172,7 @@ for(i in 1:length(seeds)){
 pred <- Rphenograph(ff@exprs) # default k = 30 nearest neighbours
 
 # Macth labels and predictions (cell level)
-matched <- matching(pred$membership, labels, c, all_levels)
+matched <- matching(pred$membership, labels)
 
 # Storing the results
 pheno_pred <- matched$preds
@@ -182,7 +180,7 @@ pheno_pred <- matched$preds
 # COMPUTING THE CONFUSION MATRIX AND OTHER PERFORMANCE MEASUREMENTS
 # store and print
 print(matched$t)
-(pheno_cm <- confusionMatrix(data = matched$preds, reference = all_labels))$table
+(pheno_cm <- confusionMatrix(data = matched$preds, reference = labels))$table
 
 # COMPUTE THE MEAN F1
 pheno_F1 <- mean_f1(pheno_cm, c)
@@ -193,7 +191,7 @@ pheno_F1 <- mean_f1(pheno_cm, c)
 pred <- flowMeans(ff@exprs, MaxN = c )
 
 # Macth labels and predictions (cell level)
-matched <- matching(pred@Labels[[1]], labels, c, all_levels)
+matched <- matching(pred@Labels[[1]], labels)
 
 # Storing the results
 flowmeans_pred <- matched$preds
@@ -201,7 +199,7 @@ flowmeans_pred <- matched$preds
 # COMPUTING THE CONFUSION MATRIX AND OTHER PERFORMANCE MEASUREMENTS
 # store and print
 print(matched$t)
-(flowmeans_cm <- confusionMatrix(data = matched$preds, reference = all_labels))$table
+(flowmeans_cm <- confusionMatrix(data = matched$preds, reference = labels))$table
 
 # COMPUTE THE MEAN F1
 flowmeans_F1 <- mean_f1(flowmeans_cm, c)
@@ -213,7 +211,7 @@ flowmeans_F1 <- mean_f1(flowmeans_cm, c)
 pred <-  flowPeaks(ff@exprs)
 
 # Macth labels and predictions (cell level)
-matched <- matching(pred$peaks.cluster, labels, c, all_levels)
+matched <- matching(pred$peaks.cluster, labels)
 
 # Storing the results
 flowpeaks_pred <- matched$preds
@@ -221,7 +219,7 @@ flowpeaks_pred <- matched$preds
 # COMPUTING THE CONFUSION MATRIX AND OTHER PERFORMANCE MEASUREMENTS
 # store and print
 print(matched$t)
-(flowpeaks_cm <- confusionMatrix(data = matched$preds, reference = all_labels))$table
+(flowpeaks_cm <- confusionMatrix(data = matched$preds, reference = labels))$table
 
 # COMPUTE THE MEAN F1
 flowpeaks_F1 <- mean_f1(flowpeaks_cm, c)
@@ -246,7 +244,7 @@ for(i in 1:length(seeds)){
   pred <- flowMeans(reduction, MaxN = c )
   
   # Macth labels and predictions (cell level)
-  matched <- matching(pred@Labels[[1]], labels, c, all_levels)
+  matched <- matching(pred@Labels[[1]], labels)
   
   # STORE THE PREDICTIONS 
   # Generate a name
@@ -255,7 +253,7 @@ for(i in 1:length(seeds)){
   assign(name_pred, matched$preds)
   
   # COMPUTING THE CONFUSION MATRIX AND OTHER PERFORMANCE MEASUREMENTS
-  cm <- confusionMatrix(data = matched$preds, reference = all_labels)
+  cm <- confusionMatrix(data = matched$preds, reference = labels)
   # Print the confusion matrix:
   cat(method, "\n")
   print(matched$t)
@@ -283,7 +281,7 @@ for(i in 1:length(seeds)){
   pred <-  flowPeaks(red_data)
   
   # Macth labels and predictions (cell level)
-  matched <- matching(pred$peaks.cluster, labels, c, all_levels)
+  matched <- matching(pred$peaks.cluster, labels)
   
   # STORE THE PREDICTIONS 
   # Generate a name
@@ -292,7 +290,7 @@ for(i in 1:length(seeds)){
   assign(name_pred, matched$preds)
   
   # COMPUTING THE CONFUSION MATRIX AND OTHER PERFORMANCE MEASUREMENTS
-  cm <- confusionMatrix(data = matched$preds, reference = all_labels)
+  cm <- confusionMatrix(data = matched$preds, reference = labels)
   # Print the confusion matrix:
   cat(method, "\n")
   print(matched$t)
@@ -310,6 +308,41 @@ for(i in 1:length(seeds)){
         geom_point(aes(color = matched$preds)) + ggtitle("flowPeaks") +
         theme(legend.position = "bottom")
   grid.arrange(p, nrow = 1)
+  
+  #### ClusterX clustering ####
+  method <- "tSNE_ClusterX"
+  pred <- cytof_cluster(reduction, method = "ClusterX")
+  
+  # Macth labels and predictions (cell level)
+  matched <- matching(pred, labels)
+  
+  # STORE THE PREDICTIONS 
+  # Generate a name
+  name_pred <- paste(method, "pred", i, sep = "_")
+  # Assign the name to the prediction
+  assign(name_pred, matched$preds)
+  
+  # COMPUTING THE CONFUSION MATRIX AND OTHER PERFORMANCE MEASUREMENTS
+  cm <- confusionMatrix(data = matched$preds, reference = labels)
+  # Print the confusion matrix:
+  cat(method, "\n")
+  print(matched$t)
+  print(cm$table)
+  # Store the confusion matrix:
+  assign(paste(method, "cm", i, sep = "_"), cm)
+  
+  # COMPUTE THE MEAN F1
+  mf1 <- mean_f1(cm, c)
+  # Storing the result in the environment
+  assign(paste(method, "F1", i, sep = "_"), mf1) 
+  
+  
+  # plot:
+  p <- ggplot(as.data.frame(reduction), aes(x = tsne_1, y = tsne_2)) + 
+        geom_point(aes(color = matched$preds)) + ggtitle("ClusterX") +
+        theme(legend.position = "bottom")
+  grid.arrange(p, nrow = 1)
+
 }
 ```  
   
@@ -331,7 +364,7 @@ for(i in 1:length(seeds)){
   pred <- flowMeans(reduction$layout, MaxN = c )
   
   # Macth labels and predictions (cell level)
-  matched <- matching(pred@Labels[[1]], labels, c, all_levels)
+  matched <- matching(pred@Labels[[1]], labels)
   
   # STORE THE PREDICTIONS 
   # Generate a name
@@ -340,7 +373,7 @@ for(i in 1:length(seeds)){
   assign(name_pred, matched$preds)
   
   # COMPUTING THE CONFUSION MATRIX AND OTHER PERFORMANCE MEASUREMENTS
-  cm <- confusionMatrix(data = matched$preds, reference = all_labels)
+  cm <- confusionMatrix(data = matched$preds, reference = labels)
   # Print the confusion matrix:
   cat(method, "\n")
   print(matched$t)
@@ -367,7 +400,7 @@ for(i in 1:length(seeds)){
   pred <-  flowPeaks(red_data)
   
   # Macth labels and predictions (cell level)
-  matched <- matching(pred$peaks.cluster, labels, c, all_levels)
+  matched <- matching(pred$peaks.cluster, labels)
   
   # STORE THE PREDICTIONS 
   # Generate a name
@@ -376,7 +409,7 @@ for(i in 1:length(seeds)){
   assign(name_pred, matched$preds)
   
   # COMPUTING THE CONFUSION MATRIX AND OTHER PERFORMANCE MEASUREMENTS
-  cm <- confusionMatrix(data = matched$preds, reference = all_labels)
+  cm <- confusionMatrix(data = matched$preds, reference = labels)
   # Print the confusion matrix:
   cat(method, "\n")
   print(matched$t)
@@ -394,6 +427,42 @@ for(i in 1:length(seeds)){
         geom_point(aes(color =  matched$preds)) + ggtitle("flowPeaks") +
         theme(legend.position = "bottom")
   grid.arrange(p, nrow = 1)
+  
+  
+  #### ClusterX clustering ####
+  method <- "UMAP_ClusterX"
+  pred <- cytof_cluster(reduction$layout, method = "ClusterX")
+  
+  # Macth labels and predictions (cell level)
+  matched <- matching(pred, labels)
+  
+  # STORE THE PREDICTIONS 
+  # Generate a name
+  name_pred <- paste(method, "pred", i, sep = "_")
+  # Assign the name to the prediction
+  assign(name_pred, matched$preds)
+  
+  # COMPUTING THE CONFUSION MATRIX AND OTHER PERFORMANCE MEASUREMENTS
+  cm <- confusionMatrix(data = matched$preds, reference = labels)
+  # Print the confusion matrix:
+  cat(method, "\n")
+  print(matched$t)
+  print(cm$table)
+  # Store the confusion matrix:
+  assign(paste(method, "cm", i, sep = "_"), cm)
+  
+  # COMPUTE THE MEAN F1
+  mf1 <- mean_f1(cm, c)
+  # Storing the result in the environment
+  assign(paste(method, "F1", i, sep = "_"), mf1) 
+  
+  
+  # plot:
+  p <- ggplot(as.data.frame(reduction$layout), aes(x = UMAP_1, y = UMAP_2)) + 
+        geom_point(aes(color = matched$preds)) + ggtitle("ClusterX") +
+        theme(legend.position = "bottom")
+  grid.arrange(p, nrow = 1)
+
 }
 ```  
 
@@ -424,14 +493,20 @@ kable(summ1)
 
 ```{r}
 # Plot all F1 results
-class <- factor(all_levels[1:c], levels = levels(labels))
+class <- factor(levels(labels)[1:c], levels = levels(labels))
 method <- c("RPhenograph", "flowMeans", "flowPeaks")
 method <- factor(method, levels = method)
 df <- data.frame(class = rep(class,3), method = rep(method, each = c), 
                  F1 = c(pheno_cm$byClass[1:c,"F1"], flowmeans_cm$byClass[1:c,"F1"], flowpeaks_cm$byClass[1:c,"F1"]),
                  percent = rep(percent,3))
 ggplot(df, aes(class, F1)) + geom_point(aes(size = percent, color = percent)) + 
-  coord_flip() + ggtitle("RPhenograph") + ylim(0,1) + facet_wrap(.~method)
+  coord_flip() + ggtitle("F1 scores") + ylim(0,1) + facet_wrap(.~method)
+
+# export png
+png(paste(params$match, "_graphs/F1_1_", params$file, ".png", sep = ""), res=150, width = 1400, height = 800)
+ggplot(df, aes(class, F1)) + geom_point(aes(size = percent, color = percent)) + 
+  coord_flip() + ggtitle("F1 scores") + ylim(0,1) + facet_wrap(.~method)
+dev.off()
 ```
 
 ```{r}
@@ -479,12 +554,15 @@ summ2 <- data.frame(Seed_1 = 0, Seed_2 = 0, Seed_3 = 0, Seed_4 = 0, Seed_5 = 0)
 summ2[1,] <- round( c(FlowSOM_F1_1, FlowSOM_F1_2, FlowSOM_F1_3, FlowSOM_F1_4, FlowSOM_F1_5), 3)
 summ2[2,] <- round( c(tSNE_fMeans_F1_1, tSNE_fMeans_F1_2, tSNE_fMeans_F1_3, tSNE_fMeans_F1_4, tSNE_fMeans_F1_5), 3)
 summ2[3,] <- round( c(tSNE_fPeaks_F1_1, tSNE_fPeaks_F1_2, tSNE_fPeaks_F1_3, tSNE_fPeaks_F1_4, tSNE_fPeaks_F1_5), 3)
-summ2[4,] <- round( c(UMAP_fMeans_F1_1, UMAP_fMeans_F1_2, UMAP_fMeans_F1_3, UMAP_fMeans_F1_4, UMAP_fMeans_F1_5), 3)
-summ2[5,] <- round( c(UMAP_fPeaks_F1_1, UMAP_fPeaks_F1_2, UMAP_fPeaks_F1_3, UMAP_fPeaks_F1_4, UMAP_fPeaks_F1_5), 3)
+summ2[4,] <- round( c(tSNE_ClusterX_F1_1, tSNE_ClusterX_F1_2, tSNE_ClusterX_F1_3, tSNE_ClusterX_F1_4, tSNE_ClusterX_F1_5), 3)
+summ2[5,] <- round( c(UMAP_fMeans_F1_1, UMAP_fMeans_F1_2, UMAP_fMeans_F1_3, UMAP_fMeans_F1_4, UMAP_fMeans_F1_5), 3)
+summ2[6,] <- round( c(UMAP_fPeaks_F1_1, UMAP_fPeaks_F1_2, UMAP_fPeaks_F1_3, UMAP_fPeaks_F1_4, UMAP_fPeaks_F1_5), 3)
+summ2[7,] <- round( c(UMAP_ClusterX_F1_1, UMAP_ClusterX_F1_2, UMAP_ClusterX_F1_3, UMAP_ClusterX_F1_4, UMAP_ClusterX_F1_5), 3)
 summ2$average_mean_F1 <- round(apply(summ2, 1, mean),3) # compute mean
 summ2$SD_F1 <- round(apply(summ2[,-ncol(summ2)], 1, sd),3) # compute SD
 
-rownames(summ2) <- c("FlowSOM", "t-SNE + flowMeans", "t-SNE + flowPeaks", "UMAP + flowMeans", "UMAP + flowPeaks")
+rownames(summ2) <- c("FlowSOM", "t-SNE + flowMeans", "t-SNE + flowPeaks",  "t-SNE + ClusterX", 
+                     "UMAP + flowMeans", "UMAP + flowPeaks", "UMAP + ClusterX")
 kable(summ2)
 ```
 
@@ -492,13 +570,13 @@ kable(summ2)
 # Plot all F1 results
 
 # preparing the data
-class <- factor(all_levels[1:c], levels = levels(labels))
-method <-  c("FlowSOM", "t-SNE + flowMeans", "t-SNE + flowPeaks", "UMAP + flowMeans", "UMAP + flowPeaks")
+class <- factor(levels(labels)[1:c], levels = levels(labels))
+method <-  c("t-SNE + flowMeans", "t-SNE + flowPeaks", "t-SNE + ClusterX", "UMAP + flowMeans", "UMAP + flowPeaks" , "UMAP + ClusterX", "FlowSOM")
 method <- factor(method, levels = method)
 conditions <- length(method) * length(seeds)
 
 # confusion matrices
-cm_list <- c("FlowSOM_cm", "tSNE_fMeans_cm", "tSNE_fPeaks_cm", "UMAP_fMeans_cm", "UMAP_fPeaks_cm")
+cm_list <- c("tSNE_fMeans_cm", "tSNE_fPeaks_cm", "tSNE_ClusterX_cm", "UMAP_fMeans_cm", "UMAP_fPeaks_cm", "UMAP_ClusterX_cm", "FlowSOM_cm")
 
 F1 <- c()
 for(i in cm_list){
@@ -516,7 +594,16 @@ df2 <- data.frame(class = rep(class, conditions), method = rep(method, each = c*
 
 # plotting
 ggplot(df2, aes(class, F1)) + geom_boxplot(aes(color = percent)) + 
-  coord_flip() + ggtitle("F1") + ylim(0,1) + facet_wrap(.~method)
+  coord_flip() + ggtitle("F1 scores") + ylim(0,1) + facet_wrap(.~method)
+```
+
+```{r, cache = F}
+library(ggplot2)
+# export png
+png(paste(params$match, "_graphs/F1_2_bigger", params$file, ".png", sep = ""), res=150, width = 1400, height = 1400)
+ggplot(df2, aes(class, F1)) + geom_boxplot(aes(color = percent)) + 
+  coord_flip() + ggtitle("F1 scores") + ylim(0,1) + facet_wrap(.~method)
+dev.off()
 
 ```
 
@@ -524,7 +611,8 @@ ggplot(df2, aes(class, F1)) + geom_boxplot(aes(color = percent)) +
 # plot all predictions
 
 # matched predictions
-pred_list <- c("FlowSOM_pred", "tSNE_fMeans_pred", "tSNE_fPeaks_pred", "UMAP_fMeans_pred", "UMAP_fPeaks_pred")
+pred_list <- c("FlowSOM_pred", "tSNE_fMeans_pred", "tSNE_fPeaks_pred", "tSNE_ClusterX_pred", 
+               "UMAP_fMeans_pred", "UMAP_fPeaks_pred", "UMAP_ClusterX_pred")
 
 predictions <- c()
 method_i <- c()
@@ -543,14 +631,15 @@ df3 <- data.frame(tsne_1 = rep(reduction[,1], length(pred_list)*length(seeds)),
                   predictions = predictions)
 ```
 
-```{r, fig.width=10, fig.height=15}
-# plot on tSNE
+```{r, fig.width=10, fig.height=15, cache = F}
+library(ggplot2)
+# plotting
 ggplot(df3, aes(x = tsne_1, y = tsne_2)) + geom_point(aes(color = factor(predictions))) + 
   facet_wrap(.~method)
 ```
 
-```{r, fig.width=10, fig.height=15}
-# plot on UMAP
+```{r, fig.width=10, fig.height=15, cache = F}
+# UMAP
 df3 <- cbind(df3, umap_1 = rep(red_umap$layout[,1], length(pred_list)*length(seeds)), 
                   umap_2 = rep(red_umap$layout[,2], length(pred_list)*length(seeds)))
 
@@ -558,12 +647,12 @@ ggplot(df3, aes(x = umap_1, y = umap_2)) + geom_point(aes(color = factor(predict
   facet_wrap(.~method)
 ```
 
-```{r, eval = F, cache = F}
+```{r, eval = T, cache = F}
 # export results
 write.table(cbind(params$file, rownames(summ1), summ1), 
-            file = "../results_f1/oneseed.txt", append = T, sep = "\t", row.names = F, col.names = F)
+            file = "../results_new_match_f1/oneseed.txt", append = T, sep = "\t", row.names = F, col.names = F)
 write.table(cbind(params$file, rownames(summ2), summ2), 
-            file = "../results_f1/fiveseeds.txt", append = T, sep = "\t", row.names = F, col.names = F)
+            file = "../results_new_match_f1/fiveseeds.txt", append = T, sep = "\t", row.names = F, col.names = F)
 ```
 
 
