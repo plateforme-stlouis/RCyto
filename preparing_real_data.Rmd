@@ -133,8 +133,8 @@ table(cells)
 Let's tag them as "lymphocytes". The rest, will be "other_events".
 ```{r}
 data$cells <-  "other_events" 
-data$cells <- as.factor(ifelse(cells, "lymphocytes", data$cells))
 data$cells <- ifelse(cells, "lymphocytes", data$cells)
+data$cells <- factor(data$cells)
 table(data$cells)
 ```
 
