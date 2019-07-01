@@ -7,8 +7,6 @@ params:
   seed: 1239
 ---
 
-Like test_05, 50,000 cells
-
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 ```
@@ -29,23 +27,13 @@ T8 <-     c("CD3" = "high", "CD4" = "low",  "CD8" = "high", "CD56" = "low",  "CD
 NKT_NN <- c("CD3" = "high", "CD4" = "low",  "CD8" = "low",  "CD56" = "high", "CD19" = "low")
 NKT_4 <-  c("CD3" = "high", "CD4" = "high", "CD8" = "low",  "CD56" = "high", "CD19" = "low")
 NKT_8 <-  c("CD3" = "high", "CD4" = "low",  "CD8" = "high", "CD56" = "high", "CD19" = "low")
-
-pheno <- as.data.frame(rbind(B, NK, T4, T8, NKT_NN, NKT_4, NKT_8))
-
-# Save the pheno table (cell types of INTEREST) object to a file
-#saveRDS(pheno, paste("pheno", params$pop_number, Sys.Date(), sep = "_"))
-
-# UNKNOWN CELLS
 U1 <- c("CD3" = "low",  "CD4" = "low",  "CD8" = "low", "CD56" = "low", "CD19" = "low")
 U2 <- c("CD3" = "low",  "CD4" = "high", "CD8" = "low", "CD56" = "low", "CD19" = "low")
 U3 <- c("CD3" = "high", "CD4" = "low",  "CD8" = "low", "CD56" = "low", "CD19" = "low")
 U4 <- c("CD3" = "high", "CD4" = "low",  "CD8" = "low", "CD56" = "low", "CD19" = "high")
 
-# Add the unknown pops to the pheno table
-pheno <- (rbind(pheno, 
-                as.data.frame(rbind(U1, U2, U3, U4))
-                )
-          )
+pheno <- ( as.data.frame( rbind(B, NK, T4, T8, NKT_NN, NKT_4, NKT_8, U1, U2, U3, U4) ) )
+
 
 # PERCENTAGE OF CELLS PER CELL TYPE
 # Let it be the same for all cell types:
@@ -140,6 +128,7 @@ plot(pop[,2:(length(markers)+1)])
 library(flowCore)
 
 ff <- new("flowFrame", exprs = as.matrix(pop[,-1])) 
+head(ff@exprs)
 ```
 
 ```{r}
