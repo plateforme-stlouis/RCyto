@@ -10,14 +10,14 @@ output:
     highlight: tango
 author: Anna Guadall
 params:
-  file: "ff_03_2019-04-16.fcs"
-  labels: "labels_03_2019-04-16"
+  file: "ff_05_2019-04-18.fcs"
+  labels: "labels_05_2019-04-18"
   outliers:
     label: "0: no outiliers, 1: outliers"
     value: 0
-  diff : 
+  diff: 
     labels: minimum difference among F1 scores that are not equivalent
-    value: 0.5
+    value: 0.05
   clusters: "5,15,20"
 ---
 
@@ -81,22 +81,27 @@ matching <- function(clustering, labels){
   m <- apply(f, 1, function(x){which.max(x)})
   m <- as.list(m)
   
-  # Column equivalent maximums
+  # F1 column equivalent maximums
   col_m <- apply(f, 2,  function(x){ which(max(x)  - x < params$diff & x != 0) }  )
   col_m <- as.list(col_m)
   
-  # Row equivalent maximums
-  row_m <- apply( f, 1, function(x){ which(max(x) - x < params$diff & x != 0) }  )
+  # Normalize row values (row-norm-F1)
+  normalize <- function(x) { return ((x - min(x)) / (max(x) - min(x))) }
+  row_norm <- apply(f, 1, normalize) # why is the result transposed?
+  row_norm <- t(row_norm)
+  
+  # Row-norm-F1 row equivalent maximums
+  row_m <- apply( row_norm, 1, function(x){ which(max(x) - x < params$diff & x != 0) }  )
   row_m <- as.list(row_m)
   
   # MERGING POPULATIONS (IN CASE ONE CLUSTER MATCHES MANY POPULATIONS)
-  matched_labels <- as.character(labels)
+  merged_labels <- as.character(labels)
   
   for (i in 1:length(labels)){
     for (j in unlist(col_m)){ 
       if(labels[i] %in% unlist(names(row_m[[j]]))){
         if(unlist(names(row_m[[j]]))[1] == names(col_m[unlist(names(row_m[[j]]))[1]])){
-          matched_labels[i] <- paste( unlist( names(row_m[[j]]) ), collapse = "-" )
+          merged_labels[i] <- paste( unlist( names(row_m[[j]]) ), collapse = "-" )
         }
       }
     }
@@ -105,57 +110,84 @@ matching <- function(clustering, labels){
   
   # MATCHING CLUSTERS TO LABELS
   # Empty list 
+  matched_merged_clusters <- rep("NA", length(clustering))
   matched_clusters <- rep("NA", length(clustering))
   
   # Replacing the numbers of the clusters by the names of the cell types:
   for(i in 1:length(clustering)){
     for(j in 1:length(row_m)){ 
       if(clustering[i] == names(row_m)[j]){ # if cluster numbers equals a row maximum...
+        matched_clusters[i] <- levels(labels)[m[[j]]]
         if(clustering[i] %in% unlist(col_m)){ # # ... that it is also a column maximum...
           # ... give it the name of the corresponding populations,
           # merging the name to the other equivalent row maximums, if it is the case
-          matched_clusters[i] <- paste(levels(labels)[as.numeric(unlist(row_m[[j]]))], 
-                                       collapse = "-")
-          
+          matched_merged_clusters[i] <- paste(levels(labels)[as.numeric(unlist(row_m[[j]]))], 
+                                              collapse = "-")
         } else { # if the cluster number equals a row maximum that is not a column maximum...
           #... give it the name of the corresponding population
-          matched_clusters[i] <- levels(labels)[m[[j]]]
+          matched_merged_clusters[i] <- levels(labels)[m[[j]]]
         }
       }
     }
   }
   
-
-  # Factorize matched labnels and clusters 
-  matched_labels <- as.factor(matched_labels)
-  # Give clusters the same level order than matched_labels
-  matched_clusters <- factor(matched_clusters, levels = levels(matched_labels)) 
+  # Number of PARTTIONS (matched clusters) 
+  partitions <- length(table(matched_clusters))
   
-  # MATCHED POPULATIONS FREQUENCIES
-  freq <- prop.table(table(matched_labels))
+  # Number of MERGED PARTITIONS (merged clusters)
+  merged_partitions <- length(table(matched_merged_clusters))
   
-  matched <- list("c" = c, "m" = m, "clusters" = matched_clusters, "labels" = matched_labels,
-                  "freqs" = freq)
+  # Factorize matched (merged) clusters and labels 
+  merged_labels <- as.factor(merged_labels)
+  matched_merged_clusters <- factor(matched_merged_clusters, levels = levels(merged_labels)) 
+  matched_clusters <- factor(matched_clusters, levels = levels(labels)) 
+  # same level order than merged_labels
+  # adds labels that have not been predicted
+  
+  matched <- list("c" = c, "f" = f, "m" = m, "merged_labels" = merged_labels,
+                  "clusters" = matched_clusters, "merged_clusters" = matched_merged_clusters,
+                  "partitions" = partitions, "merged_partitions" = merged_partitions)
   return(matched)
 }
 ```
 
 Computing DIFFERENT MEAN F1 scores:
 ```{r f1}
-mean_f1 <- function(cm, pop_freq){
-  f1_list <- cm$byClass[,"F1"] # cm: confusion matrix
+mean_f1 <- function(cm, cm_merged, merged_labels){
+  # NOT MERGED, FOUND
+  f1_list <- cm$byClass[,"F1"]
+  f1_no_nas <- f1_list[!is.na(f1_list)]   # removing NAs
+  mf1_f <- mean(f1_no_nas)
   
-  f1_no_nas <- f1_list[!is.na(f1_list)] # removing NAs from F1 list
+  pop_freq <- prop.table(table(labels))
   pop_freq_no_nas <- pop_freq[!is.na(f1_list)] / sum(pop_freq[!is.na(f1_list)])
-  mean_f1_found <- mean(f1_no_nas) # MEAN F1 (FOUND POPS) 
-  w_mean_f1_found <- t(pop_freq_no_nas) %*% f1_no_nas # WEIGHTED MEAN F1 (FOUND POPS)
+  mf1_f_w <- t(pop_freq_no_nas) %*% f1_no_nas # WEIGHTED MEAN 
   
-  f1_list[is.na(f1_list)] <-  0 # replacing NAs by zero
-  mean_f1_all <- mean(f1_list)   # MEAN F1 (ALL POPS)
-  w_mean_f1_all <- t(pop_freq) %*% f1_list # WEIGHTED MEAN F1 (ALL POPS)
+  # NOT MERGED, ALL
+  f1_zeros <- f1_list
+  f1_zeros <- ifelse(is.na(f1_list), 0, f1_list)
+  mf1_all <- mean(f1_zeros)
+  mf1_all_w <- t(pop_freq) %*% f1_zeros # WEIGHTED MEAN 
   
-  f1 <- list("found" = mean_f1_found, "w_found" = w_mean_f1_found, 
-             "all" = mean_f1_all, "w_all" = w_mean_f1_all)
+  # MERGED, FOUND
+  f1_list <- cm_merged$byClass[,"F1"]
+  f1_no_nas <- f1_list[!is.na(f1_list)]   # removing NAs
+  mf1_m_f <- mean(f1_no_nas)
+  
+  pop_freq <- prop.table(table(merged_labels))
+  pop_freq_no_nas <- pop_freq[!is.na(f1_list)] / sum(pop_freq[!is.na(f1_list)])
+  mf1_m_f_w <- t(pop_freq_no_nas) %*% f1_no_nas # WEIGHTED MEAN 
+  
+  # MERGED, ALL
+  f1_zeros <- f1_list
+  f1_zeros <- ifelse(is.na(f1_list), 0, f1_list)
+  mf1_m_all <- mean(f1_zeros)
+  mf1_m_all_w <- t(pop_freq) %*% f1_zeros # WEIGHTED MEAN 
+  
+  f1 <- list("found" = mf1_f, "w_found" = mf1_f_w, 
+             "all" = mf1_all, "w_all" = mf1_all_w,
+             "merged_found" = mf1_m_f, "merged_w_found" = mf1_m_f_w, 
+             "merged_all" = mf1_m_all, "merged_w_all" = mf1_m_all_w)
   return(f1)
 }
 ```
@@ -163,8 +195,12 @@ mean_f1 <- function(cm, pop_freq){
 # Preparing results tables
 ```{r table}
 pops_f1 <- c()
-summ <- data.frame(File = NA, n = 0, Method = NA, Clusters = 0, Partitions = 0, 
-                   Mean_F1_found = 0, Weighted_mean_F1_found = 0, Mean_F1_all = 0, Weighted_mean_F1_all = 0,
+summ <- data.frame(File = NA, n = 0, Method = NA, Clusters = 0, 
+                   Partitions = 0, Merged_partitions = 0,
+                   Mean_F1_found = 0, Weighted_mean_F1_found = 0, 
+                   Mean_F1_all = 0, Weighted_mean_F1_all = 0,
+                   Mean_F1_merged_found = 0, Weighted_mean_F1_merged_found = 0, 
+                   Mean_F1_merged_all = 0, Weighted_mean_F1_merged_all = 0,
                    Reduction_user_time = 0, Reduction_elapsed_time = 0,
                    Clustering_user_time = 0, Clustering_elapsed_time = 0)
 ```
@@ -204,26 +240,38 @@ for(i in 1:length(clusters)){
   
   # MATCHING LABELS AND PREDICTIONS
   matched <- matching(clustering, labels)
-  number_partitions <- length(table(matched$clusters))
   
   # COMPUTING THE CONFUSION MATRIX AND OTHER PERFORMANCE MEASUREMENTS
   cm <- confusionMatrix(data = matched$clusters[labels != "outliers"],
-                        reference = matched$labels[labels != "outliers"])
+                        reference = labels[labels != "outliers"])
+  cm_merged <- confusionMatrix(
+    data = matched$merged_clusters[matched$merged_labels != "outliers"],
+    reference = matched$merged_labels[matched$merged_labels != "outliers"]
+    )
+  
   # Add the F1 values to a list 
-  pops_f1 <- c(pops_f1, cm$byClass[, "F1"])
+  #pops_f1 <- c(pops_f1, cm$byClass[, "F1"])
   
   # COMPUTE MEAN F1 and WEIGHTED MEAN F1
-  mf1 <- mean_f1(cm, matched$freqs)
+  mf1 <- mean_f1(cm, cm_merged, matched$merged_labels)
   # Storing the result 
-  summ[i,] <- c(params$file, nrow(ff@exprs), method, clusters[i], number_partitions, 
-                mf1$found, mf1$w_found, mf1$all, mf1$w_all, NA, NA, ptm[1] + ptm[4], ptm[3])
+  summ[i,c(1,3)] <- c(params$file, method)
+  summ[i,-c(1,3)] <- c(nrow(ff@exprs), clusters[i],
+                       matched$partitions, matched$merged_partitions,
+                       mf1$found, mf1$w_found, mf1$all, mf1$w_all, 
+                       mf1$merged_found, mf1$merged_w_found, mf1$merged_all, mf1$merged_w_all,
+                       NA, NA, ptm[1] + ptm[4], ptm[3])
 
   # FOR VISUALIZATION
-  # Print the unmatched contingency matrix:
   cat("\n", method, clusters[i], "clusters\n")
+  cat("\nContingency matrix")
   print(matched$c)
-  # Print the matched confusion matrix:
+  cat("\nF1 matrix")
+  print(round(matched$f, 2))
+  cat("\nConfusion matrix")
   print(cm$table)
+  cat("\nConfusion matrix (MERGED)")
+  print(cm_merged$table)
 }
 ```
 
@@ -240,26 +288,37 @@ clustering <- pred$membership
 
 # MATCHING LABELS AND PREDICTIONS
 matched <- matching(clustering, labels)
-number_partitions <- length(table(matched$clusters))
 
 # COMPUTING THE CONFUSION MATRIX AND OTHER PERFORMANCE MEASUREMENTS
 cm <- confusionMatrix(data = matched$clusters[labels != "outliers"],
-                      reference = matched$labels[labels != "outliers"])
+                      reference = labels[labels != "outliers"])
+cm_merged <- confusionMatrix(
+  data = matched$merged_clusters[matched$merged_labels != "outliers"],
+  reference = matched$merged_labels[matched$merged_labels != "outliers"]
+)
+
 # Add the F1 values to a list 
-pops_f1 <- c(pops_f1, cm$byClass[, "F1"])
+#pops_f1 <- c(pops_f1, cm$byClass[, "F1"])
 
 # COMPUTE MEAN F1 and WEIGHTED MEAN F1
-mf1 <- mean_f1(cm, matched$freqs)
-# Storing the result 
-summ[(nrow(summ)+1),] <- c(params$file, nrow(ff@exprs), method, length(table(clustering)),
-                           number_partitions, mf1$found, mf1$w_found, mf1$all, mf1$w_all,
-                           NA, NA, ptm[1] + ptm[4], ptm[3])
+mf1 <- mean_f1(cm, cm_merged, matched$merged_labels)
+summ[nrow(summ)+1,c(1,3)] <- c(params$file, method)
+summ[nrow(summ),-c(1,3)] <- c(nrow(ff@exprs), length(table(clustering)),
+                                matched$partitions, matched$merged_partitions,
+                                mf1$found, mf1$w_found, mf1$all, mf1$w_all, 
+                                mf1$merged_found, mf1$merged_w_found, mf1$merged_all, mf1$merged_w_all,
+                                NA, NA, ptm[1] + ptm[4], ptm[3])
+
 # FOR VISUALIZATION
-# Print the unmatched contingency matrix:
-cat("\n", method, "\n")
+cat("\n", method)
+cat("\nContingency matrix")
 print(matched$c)
-# Print the matched confusion matrix:
+cat("\nF1 matrix")
+print(round(matched$f, 2))
+cat("\nConfusion matrix")
 print(cm$table)
+cat("\nConfusion matrix (MERGED)")
+print(cm_merged$table)
 ```
 
 ## flowMeans
@@ -275,27 +334,37 @@ clustering <- pred@Labels[[1]]
 
 # MATCHING LABELS AND PREDICTIONS
 matched <- matching(clustering, labels)
-number_partitions <- length(table(matched$clusters))
 
 # COMPUTING THE CONFUSION MATRIX AND OTHER PERFORMANCE MEASUREMENTS
 cm <- confusionMatrix(data = matched$clusters[labels != "outliers"],
-                      reference = matched$labels[labels != "outliers"])
+                      reference = labels[labels != "outliers"])
+cm_merged <- confusionMatrix(
+  data = matched$merged_clusters[matched$merged_labels != "outliers"],
+  reference = matched$merged_labels[matched$merged_labels != "outliers"]
+)
+
 # Add the F1 values to a list 
-pops_f1 <- c(pops_f1, cm$byClass[, "F1"])
+#pops_f1 <- c(pops_f1, cm$byClass[, "F1"])
 
 # COMPUTE MEAN F1 and WEIGHTED MEAN F1
-mf1 <- mean_f1(cm, matched$freqs)
-# Storing the result 
-summ[(nrow(summ)+1),] <- c(params$file, nrow(ff@exprs), method, length(table(clustering)),
-                           number_partitions, mf1$found, mf1$w_found, mf1$all, mf1$w_all,
-                           NA, NA, ptm[1] + ptm[4], ptm[3])
+mf1 <- mean_f1(cm, cm_merged, matched$merged_labels)
+summ[nrow(summ)+1,c(1,3)] <- c(params$file, method)
+summ[nrow(summ),-c(1,3)] <- c(nrow(ff@exprs), length(table(clustering)),
+                                matched$partitions, matched$merged_partitions,
+                                mf1$found, mf1$w_found, mf1$all, mf1$w_all, 
+                                mf1$merged_found, mf1$merged_w_found, mf1$merged_all, mf1$merged_w_all,
+                                NA, NA, ptm[1] + ptm[4], ptm[3])
 
 # FOR VISUALIZATION
-# Print the unmatched contingency matrix:
-cat("\n", method, "\n")
+cat("\n", method)
+cat("\nContingency matrix")
 print(matched$c)
-# Print the matched confusion matrix:
+cat("\nF1 matrix")
+print(round(matched$f, 2))
+cat("\nConfusion matrix")
 print(cm$table)
+cat("\nConfusion matrix (MERGED)")
+print(cm_merged$table)
 ```
 
 ## flowPeaks
@@ -311,27 +380,37 @@ clustering <- pred$peaks.cluster
 
 # MATCHING LABELS AND PREDICTIONS
 matched <- matching(clustering, labels)
-number_partitions <- length(table(matched$clusters))
 
 # COMPUTING THE CONFUSION MATRIX AND OTHER PERFORMANCE MEASUREMENTS
 cm <- confusionMatrix(data = matched$clusters[labels != "outliers"],
-                      reference = matched$labels[labels != "outliers"])
+                      reference = labels[labels != "outliers"])
+cm_merged <- confusionMatrix(
+  data = matched$merged_clusters[matched$merged_labels != "outliers"],
+  reference = matched$merged_labels[matched$merged_labels != "outliers"]
+)
+
 # Add the F1 values to a list 
-pops_f1 <- c(pops_f1, cm$byClass[, "F1"])
+#pops_f1 <- c(pops_f1, cm$byClass[, "F1"])
 
 # COMPUTE MEAN F1 and WEIGHTED MEAN F1
-mf1 <- mean_f1(cm, matched$freqs)
-# Storing the result 
-summ[(nrow(summ)+1),] <- c(params$file, nrow(ff@exprs), method, length(table(clustering)),
-                           number_partitions, mf1$found, mf1$w_found, mf1$all, mf1$w_all,
-                           NA, NA, ptm[1] + ptm[4], ptm[3])
+mf1 <- mean_f1(cm, cm_merged, matched$merged_labels)
+summ[nrow(summ)+1, c(1,3)] <- c(params$file, method)
+summ[nrow(summ), -c(1,3)] <- c(nrow(ff@exprs), length(table(clustering)),
+                              matched$partitions, matched$merged_partitions,
+                              mf1$found, mf1$w_found, mf1$all, mf1$w_all, 
+                              mf1$merged_found, mf1$merged_w_found, mf1$merged_all, mf1$merged_w_all,
+                              NA, NA, ptm[1] + ptm[4], ptm[3])
 
 # FOR VISUALIZATION
-# Print the unmatched contingency matrix:
-cat("\n", method, "\n")
+cat("\n", method)
+cat("\nContingency matrix")
 print(matched$c)
-# Print the matched confusion matrix:
+cat("\nF1 matrix")
+print(round(matched$f, 2))
+cat("\nConfusion matrix")
 print(cm$table)
+cat("\nConfusion matrix (MERGED)")
+print(cm_merged$table)
 ```
 
 ## DEPECHE
@@ -347,27 +426,37 @@ clustering <- pred$clusterVector
 
 # MATCHING LABELS AND PREDICTIONS
 matched <- matching(clustering, labels)
-number_partitions <- length(table(matched$clusters))
 
 # COMPUTING THE CONFUSION MATRIX AND OTHER PERFORMANCE MEASUREMENTS
 cm <- confusionMatrix(data = matched$clusters[labels != "outliers"],
-                      reference = matched$labels[labels != "outliers"])
+                      reference = labels[labels != "outliers"])
+cm_merged <- confusionMatrix(
+  data = matched$merged_clusters[matched$merged_labels != "outliers"],
+  reference = matched$merged_labels[matched$merged_labels != "outliers"]
+)
+
 # Add the F1 values to a list 
-pops_f1 <- c(pops_f1, cm$byClass[, "F1"])
+#pops_f1 <- c(pops_f1, cm$byClass[, "F1"])
 
 # COMPUTE MEAN F1 and WEIGHTED MEAN F1
-mf1 <- mean_f1(cm, matched$freqs)
-# Storing the result 
-summ[(nrow(summ)+1),] <- c(params$file, nrow(ff@exprs), method, length(table(clustering)),
-                           number_partitions, mf1$found, mf1$w_found, mf1$all, mf1$w_all,
-                           NA, NA, ptm[1] + ptm[4], ptm[3])
+mf1 <- mean_f1(cm, cm_merged, matched$merged_labels)
+summ[nrow(summ)+1, c(1,3)] <- c(params$file, method)
+summ[nrow(summ), -c(1,3)] <- c(nrow(ff@exprs), length(table(clustering)),
+                              matched$partitions, matched$merged_partitions,
+                              mf1$found, mf1$w_found, mf1$all, mf1$w_all, 
+                              mf1$merged_found, mf1$merged_w_found, mf1$merged_all, mf1$merged_w_all,
+                              NA, NA, ptm[1] + ptm[4], ptm[3])
 
 # FOR VISUALIZATION
-# Print the unmatched contingency matrix:
-cat("\n", method, "\n")
+cat("\n", method)
+cat("\nContingency matrix")
 print(matched$c)
-# Print the matched confusion matrix:
+cat("\nF1 matrix")
+print(round(matched$f, 2))
+cat("\nConfusion matrix")
 print(cm$table)
+cat("\nConfusion matrix (MERGED)")
+print(cm_merged$table)
 ```
 
 # Clustering on t-SNE-reduced data (2D)
@@ -384,26 +473,37 @@ clustering <- pred$membership
 
 # MATCHING LABELS AND PREDICTIONS
 matched <- matching(clustering, labels)
-number_partitions <- length(table(matched$clusters))
 
 # COMPUTING THE CONFUSION MATRIX AND OTHER PERFORMANCE MEASUREMENTS
 cm <- confusionMatrix(data = matched$clusters[labels != "outliers"],
-                      reference = matched$labels[labels != "outliers"])
+                      reference = labels[labels != "outliers"])
+cm_merged <- confusionMatrix(
+  data = matched$merged_clusters[matched$merged_labels != "outliers"],
+  reference = matched$merged_labels[matched$merged_labels != "outliers"]
+)
+
 # Add the F1 values to a list 
-pops_f1 <- c(pops_f1, cm$byClass[, "F1"])
+#pops_f1 <- c(pops_f1, cm$byClass[, "F1"])
 
 # COMPUTE MEAN F1 and WEIGHTED MEAN F1
-mf1 <- mean_f1(cm, matched$freqs)
-# Storing the result 
-summ[(nrow(summ)+1),] <- c(params$file, nrow(ff@exprs), method, length(table(clustering)),
-                           number_partitions, mf1$found, mf1$w_found, mf1$all, mf1$w_all,
-                           tsne_time[1] + tsne_time[4], tsne_time[3], ptm[1] + ptm[4], ptm[3])
+mf1 <- mean_f1(cm, cm_merged, matched$merged_labels)
+summ[nrow(summ)+1, c(1,3)] <- c(params$file, method)
+summ[nrow(summ), -c(1,3)] <- c(nrow(ff@exprs), length(table(clustering)),
+                              matched$partitions, matched$merged_partitions,
+                              mf1$found, mf1$w_found, mf1$all, mf1$w_all, 
+                              mf1$merged_found, mf1$merged_w_found, mf1$merged_all, mf1$merged_w_all,
+                              tsne_time[1] + tsne_time[4], tsne_time[3], ptm[1] + ptm[4], ptm[3])
+
 # FOR VISUALIZATION
-# Print the unmatched contingency matrix:
-cat("\n", method, "\n")
+cat("\n", method)
+cat("\nContingency matrix")
 print(matched$c)
-# Print the matched confusion matrix:
+cat("\nF1 matrix")
+print(round(matched$f, 2))
+cat("\nConfusion matrix")
 print(cm$table)
+cat("\nConfusion matrix (MERGED)")
+print(cm_merged$table)
 ```
 
 ## flowMeans
@@ -419,27 +519,37 @@ clustering <- pred@Labels[[1]]
 
 # MATCHING LABELS AND PREDICTIONS
 matched <- matching(clustering, labels)
-number_partitions <- length(table(matched$clusters))
 
 # COMPUTING THE CONFUSION MATRIX AND OTHER PERFORMANCE MEASUREMENTS
 cm <- confusionMatrix(data = matched$clusters[labels != "outliers"],
-                      reference = matched$labels[labels != "outliers"])
+                      reference = labels[labels != "outliers"])
+cm_merged <- confusionMatrix(
+  data = matched$merged_clusters[matched$merged_labels != "outliers"],
+  reference = matched$merged_labels[matched$merged_labels != "outliers"]
+)
+
 # Add the F1 values to a list 
-pops_f1 <- c(pops_f1, cm$byClass[, "F1"])
+#pops_f1 <- c(pops_f1, cm$byClass[, "F1"])
 
 # COMPUTE MEAN F1 and WEIGHTED MEAN F1
-mf1 <- mean_f1(cm, matched$freqs)
-# Storing the result 
-summ[(nrow(summ)+1),] <- c(params$file, nrow(ff@exprs), method, length(table(clustering)),
-                           number_partitions, mf1$found, mf1$w_found, mf1$all, mf1$w_all,
-                           tsne_time[1] + tsne_time[4], tsne_time[3], ptm[1] + ptm[4], ptm[3])
+summ[nrow(summ)+1, c(1,3)] <- c(params$file, method)
+summ[nrow(summ), -c(1,3)] <- c(nrow(ff@exprs), length(table(clustering)),
+                              matched$partitions, matched$merged_partitions,
+                              mf1$found, mf1$w_found, mf1$all, mf1$w_all, 
+                              mf1$merged_found, mf1$merged_w_found, mf1$merged_all, mf1$merged_w_all,
+                              tsne_time[1] + tsne_time[4], tsne_time[3], ptm[1] + ptm[4], ptm[3])
+
 
 # FOR VISUALIZATION
-# Print the unmatched contingency matrix:
-cat("\n", method, "\n")
+cat("\n", method)
+cat("\nContingency matrix")
 print(matched$c)
-# Print the matched confusion matrix:
+cat("\nF1 matrix")
+print(round(matched$f, 2))
+cat("\nConfusion matrix")
 print(cm$table)
+cat("\nConfusion matrix (MERGED)")
+print(cm_merged$table)
 ```
 
 ## flowPeaks
@@ -455,26 +565,37 @@ clustering <- pred$peaks.cluster
 
 # MATCHING LABELS AND PREDICTIONS
 matched <- matching(clustering, labels)
-number_partitions <- length(table(matched$clusters))
 
 # COMPUTING THE CONFUSION MATRIX AND OTHER PERFORMANCE MEASUREMENTS
 cm <- confusionMatrix(data = matched$clusters[labels != "outliers"],
-                      reference = matched$labels[labels != "outliers"])
+                      reference = labels[labels != "outliers"])
+cm_merged <- confusionMatrix(
+  data = matched$merged_clusters[matched$merged_labels != "outliers"],
+  reference = matched$merged_labels[matched$merged_labels != "outliers"]
+)
+
 # Add the F1 values to a list 
-pops_f1 <- c(pops_f1, cm$byClass[, "F1"])
+#pops_f1 <- c(pops_f1, cm$byClass[, "F1"])
 
 # COMPUTE MEAN F1 and WEIGHTED MEAN F1
-mf1 <- mean_f1(cm, matched$freqs)
-# Storing the result 
-summ[(nrow(summ)+1),] <- c(params$file, nrow(ff@exprs), method, length(table(clustering)),
-                           number_partitions, mf1$found, mf1$w_found, mf1$all, mf1$w_all,
-                           tsne_time[1] + tsne_time[4], tsne_time[3], ptm[1] + ptm[4], ptm[3])
+mf1 <- mean_f1(cm, cm_merged, matched$merged_labels)
+summ[nrow(summ)+1, c(1,3)] <- c(params$file, method)
+summ[nrow(summ), -c(1,3)] <- c(nrow(ff@exprs), length(table(clustering)),
+                              matched$partitions, matched$merged_partitions,
+                              mf1$found, mf1$w_found, mf1$all, mf1$w_all, 
+                              mf1$merged_found, mf1$merged_w_found, mf1$merged_all, mf1$merged_w_all,
+                              tsne_time[1] + tsne_time[4], tsne_time[3], ptm[1] + ptm[4], ptm[3])
+
 # FOR VISUALIZATION
-# Print the unmatched contingency matrix:
-cat("\n", method, "\n")
+cat("\n", method)
+cat("\nContingency matrix")
 print(matched$c)
-# Print the matched confusion matrix:
+cat("\nF1 matrix")
+print(round(matched$f, 2))
+cat("\nConfusion matrix")
 print(cm$table)
+cat("\nConfusion matrix (MERGED)")
+print(cm_merged$table)
 ```
 
 ## DEPECHE
@@ -490,27 +611,37 @@ clustering <- pred$clusterVector
 
 # MATCHING LABELS AND PREDICTIONS
 matched <- matching(clustering, labels)
-number_partitions <- length(table(matched$clusters))
 
 # COMPUTING THE CONFUSION MATRIX AND OTHER PERFORMANCE MEASUREMENTS
 cm <- confusionMatrix(data = matched$clusters[labels != "outliers"],
-                      reference = matched$labels[labels != "outliers"])
+                      reference = labels[labels != "outliers"])
+cm_merged <- confusionMatrix(
+  data = matched$merged_clusters[matched$merged_labels != "outliers"],
+  reference = matched$merged_labels[matched$merged_labels != "outliers"]
+)
+
 # Add the F1 values to a list 
-pops_f1 <- c(pops_f1, cm$byClass[, "F1"])
+#pops_f1 <- c(pops_f1, cm$byClass[, "F1"])
 
 # COMPUTE MEAN F1 and WEIGHTED MEAN F1
-mf1 <- mean_f1(cm, matched$freqs)
-# Storing the result 
-summ[(nrow(summ)+1),] <- c(params$file, nrow(ff@exprs), method, length(table(clustering)),
-                           number_partitions, mf1$found, mf1$w_found, mf1$all, mf1$w_all,
-                           tsne_time[1] + tsne_time[4], tsne_time[3], ptm[1] + ptm[4], ptm[3])
+mf1 <- mean_f1(cm, cm_merged, matched$merged_labels)
+summ[nrow(summ)+1, c(1,3)] <- c(params$file, method)
+summ[nrow(summ), -c(1,3)] <- c(nrow(ff@exprs), length(table(clustering)),
+                              matched$partitions, matched$merged_partitions,
+                              mf1$found, mf1$w_found, mf1$all, mf1$w_all, 
+                              mf1$merged_found, mf1$merged_w_found, mf1$merged_all, mf1$merged_w_all,
+                              tsne_time[1] + tsne_time[4], tsne_time[3], ptm[1] + ptm[4], ptm[3])
 
 # FOR VISUALIZATION
-# Print the unmatched contingency matrix:
-cat("\n", method, "\n")
+cat("\n", method)
+cat("\nContingency matrix")
 print(matched$c)
-# Print the matched confusion matrix:
+cat("\nF1 matrix")
+print(round(matched$f, 2))
+cat("\nConfusion matrix")
 print(cm$table)
+cat("\nConfusion matrix (MERGED)")
+print(cm_merged$table)
 ```
 
 ## ClusterX
@@ -524,27 +655,36 @@ ptm <- proc.time() - ptm
 
 # MATCHING LABELS AND PREDICTIONS
 matched <- matching(clustering, labels)
-number_partitions <- length(table(matched$clusters))
 
 # COMPUTING THE CONFUSION MATRIX AND OTHER PERFORMANCE MEASUREMENTS
 cm <- confusionMatrix(data = matched$clusters[labels != "outliers"],
-                      reference = matched$labels[labels != "outliers"])
+                      reference = labels[labels != "outliers"])
+cm_merged <- confusionMatrix(
+  data = matched$merged_clusters[matched$merged_labels != "outliers"],
+  reference = matched$merged_labels[matched$merged_labels != "outliers"]
+)
+
 # Add the F1 values to a list 
-pops_f1 <- c(pops_f1, cm$byClass[, "F1"])
+#pops_f1 <- c(pops_f1, cm$byClass[, "F1"])
 
 # COMPUTE MEAN F1 and WEIGHTED MEAN F1
-mf1 <- mean_f1(cm, matched$freqs)
-# Storing the result 
-summ[(nrow(summ)+1),] <- c(params$file, nrow(ff@exprs), method, length(table(clustering)),
-                           number_partitions, mf1$found, mf1$w_found, mf1$all, mf1$w_all,
-                           tsne_time[1] + tsne_time[4], tsne_time[3], ptm[1] + ptm[4], ptm[3])
+mf1 <- mean_f1(cm, cm_merged, matched$merged_labels)
+summ[nrow(summ)+1,] <- c(params$file, nrow(ff@exprs), method, length(table(clustering)),
+                matched$partitions, matched$merged_partitions,
+                mf1$found, mf1$w_found, mf1$all, mf1$w_all, 
+                mf1$merged_found, mf1$merged_w_found, mf1$merged_all, mf1$merged_w_all,
+                tsne_time[1] + tsne_time[4], tsne_time[3], ptm[1] + ptm[4], ptm[3])
 
 # FOR VISUALIZATION
-# Print the unmatched contingency matrix:
-cat("\n", method, "\n")
+cat("\n", method)
+cat("\nContingency matrix")
 print(matched$c)
-# Print the matched confusion matrix:
+cat("\nF1 matrix")
+print(round(matched$f, 2))
+cat("\nConfusion matrix")
 print(cm$table)
+cat("\nConfusion matrix (MERGED)")
+print(cm_merged$table)
 ```
 
 # Clustering on UMAP-reduced data (2D)
@@ -561,26 +701,36 @@ clustering <- pred$membership
 
 # MATCHING LABELS AND PREDICTIONS
 matched <- matching(clustering, labels)
-number_partitions <- length(table(matched$clusters))
 
 # COMPUTING THE CONFUSION MATRIX AND OTHER PERFORMANCE MEASUREMENTS
 cm <- confusionMatrix(data = matched$clusters[labels != "outliers"],
-                      reference = matched$labels[labels != "outliers"])
+                      reference = labels[labels != "outliers"])
+cm_merged <- confusionMatrix(
+  data = matched$merged_clusters[matched$merged_labels != "outliers"],
+  reference = matched$merged_labels[matched$merged_labels != "outliers"]
+)
+
 # Add the F1 values to a list 
-pops_f1 <- c(pops_f1, cm$byClass[, "F1"])
+#pops_f1 <- c(pops_f1, cm$byClass[, "F1"])
 
 # COMPUTE MEAN F1 and WEIGHTED MEAN F1
-mf1 <- mean_f1(cm, matched$freqs)
-# Storing the result 
-summ[(nrow(summ)+1),] <- c(params$file, nrow(ff@exprs), method, length(table(clustering)),
-                           number_partitions, mf1$found, mf1$w_found, mf1$all, mf1$w_all,
-                           umap_time[1] + umap_time[4], umap_time[3], ptm[1] + ptm[4], ptm[3])
+mf1 <- mean_f1(cm, cm_merged, matched$merged_labels)
+summ[nrow(summ)+1,] <- c(params$file, nrow(ff@exprs), method, length(table(clustering)),
+                matched$partitions, matched$merged_partitions,
+                mf1$found, mf1$w_found, mf1$all, mf1$w_all, 
+                mf1$merged_found, mf1$merged_w_found, mf1$merged_all, mf1$merged_w_all,
+                umap_time[1] + umap_time[4], umap_time[3], ptm[1] + ptm[4], ptm[3])
+
 # FOR VISUALIZATION
-# Print the unmatched contingency matrix:
-cat("\n", method, "\n")
+cat("\n", method)
+cat("\nContingency matrix")
 print(matched$c)
-# Print the matched confusion matrix:
+cat("\nF1 matrix")
+print(round(matched$f, 2))
+cat("\nConfusion matrix")
 print(cm$table)
+cat("\nConfusion matrix (MERGED)")
+print(cm_merged$table)
 ```
 
 ## flowMeans
@@ -596,27 +746,36 @@ clustering <- pred@Labels[[1]]
 
 # MATCHING LABELS AND PREDICTIONS
 matched <- matching(clustering, labels)
-number_partitions <- length(table(matched$clusters))
 
 # COMPUTING THE CONFUSION MATRIX AND OTHER PERFORMANCE MEASUREMENTS
 cm <- confusionMatrix(data = matched$clusters[labels != "outliers"],
-                      reference = matched$labels[labels != "outliers"])
+                      reference = labels[labels != "outliers"])
+cm_merged <- confusionMatrix(
+  data = matched$merged_clusters[matched$merged_labels != "outliers"],
+  reference = matched$merged_labels[matched$merged_labels != "outliers"]
+)
+
 # Add the F1 values to a list 
-pops_f1 <- c(pops_f1, cm$byClass[, "F1"])
+#pops_f1 <- c(pops_f1, cm$byClass[, "F1"])
 
 # COMPUTE MEAN F1 and WEIGHTED MEAN F1
-mf1 <- mean_f1(cm, matched$freqs)
-# Storing the result 
-summ[(nrow(summ)+1),] <- c(params$file, nrow(ff@exprs), method, length(table(clustering)),
-                           number_partitions, mf1$found, mf1$w_found, mf1$all, mf1$w_all,
-                           umap_time[1] + umap_time[4], umap_time[3], ptm[1] + ptm[4], ptm[3])
+mf1 <- mean_f1(cm, cm_merged, matched$merged_labels)
+summ[nrow(summ)+1,] <- c(params$file, nrow(ff@exprs), method, length(table(clustering)),
+                matched$partitions, matched$merged_partitions,
+                mf1$found, mf1$w_found, mf1$all, mf1$w_all, 
+                mf1$merged_found, mf1$merged_w_found, mf1$merged_all, mf1$merged_w_all,
+                umap_time[1] + umap_time[4], umap_time[3], ptm[1] + ptm[4], ptm[3])
 
 # FOR VISUALIZATION
-# Print the unmatched contingency matrix:
-cat("\n", method, "\n")
+cat("\n", method)
+cat("\nContingency matrix")
 print(matched$c)
-# Print the matched confusion matrix:
+cat("\nF1 matrix")
+print(round(matched$f, 2))
+cat("\nConfusion matrix")
 print(cm$table)
+cat("\nConfusion matrix (MERGED)")
+print(cm_merged$table)
 ```
 
 ## flowPeaks
@@ -632,26 +791,36 @@ clustering <- pred$peaks.cluster
 
 # MATCHING LABELS AND PREDICTIONS
 matched <- matching(clustering, labels)
-number_partitions <- length(table(matched$clusters))
 
 # COMPUTING THE CONFUSION MATRIX AND OTHER PERFORMANCE MEASUREMENTS
 cm <- confusionMatrix(data = matched$clusters[labels != "outliers"],
-                      reference = matched$labels[labels != "outliers"])
+                      reference = labels[labels != "outliers"])
+cm_merged <- confusionMatrix(
+  data = matched$merged_clusters[matched$merged_labels != "outliers"],
+  reference = matched$merged_labels[matched$merged_labels != "outliers"]
+)
+
 # Add the F1 values to a list 
-pops_f1 <- c(pops_f1, cm$byClass[, "F1"])
+#pops_f1 <- c(pops_f1, cm$byClass[, "F1"])
 
 # COMPUTE MEAN F1 and WEIGHTED MEAN F1
-mf1 <- mean_f1(cm, matched$freqs)
-# Storing the result 
-summ[(nrow(summ)+1),] <- c(params$file, nrow(ff@exprs), method, length(table(clustering)),
-                           number_partitions, mf1$found, mf1$w_found, mf1$all, mf1$w_all,
-                           umap_time[1] + umap_time[4], umap_time[3], ptm[1] + ptm[4], ptm[3])
+mf1 <- mean_f1(cm, cm_merged, matched$merged_labels)
+summ[nrow(summ)+1,] <- c(params$file, nrow(ff@exprs), method, length(table(clustering)),
+                matched$partitions, matched$merged_partitions,
+                mf1$found, mf1$w_found, mf1$all, mf1$w_all, 
+                mf1$merged_found, mf1$merged_w_found, mf1$merged_all, mf1$merged_w_all,
+                umap_time[1] + umap_time[4], umap_time[3], ptm[1] + ptm[4], ptm[3])
+
 # FOR VISUALIZATION
-# Print the unmatched contingency matrix:
-cat("\n", method, "\n")
+cat("\n", method)
+cat("\nContingency matrix")
 print(matched$c)
-# Print the matched confusion matrix:
+cat("\nF1 matrix")
+print(round(matched$f, 2))
+cat("\nConfusion matrix")
 print(cm$table)
+cat("\nConfusion matrix (MERGED)")
+print(cm_merged$table)
 ```
 
 ## DEPECHE
@@ -667,27 +836,36 @@ clustering <- pred$clusterVector
 
 # MATCHING LABELS AND PREDICTIONS
 matched <- matching(clustering, labels)
-number_partitions <- length(table(matched$clusters))
 
 # COMPUTING THE CONFUSION MATRIX AND OTHER PERFORMANCE MEASUREMENTS
 cm <- confusionMatrix(data = matched$clusters[labels != "outliers"],
-                      reference = matched$labels[labels != "outliers"])
+                      reference = labels[labels != "outliers"])
+cm_merged <- confusionMatrix(
+  data = matched$merged_clusters[matched$merged_labels != "outliers"],
+  reference = matched$merged_labels[matched$merged_labels != "outliers"]
+)
+
 # Add the F1 values to a list 
-pops_f1 <- c(pops_f1, cm$byClass[, "F1"])
+#pops_f1 <- c(pops_f1, cm$byClass[, "F1"])
 
 # COMPUTE MEAN F1 and WEIGHTED MEAN F1
-mf1 <- mean_f1(cm, matched$freqs)
-# Storing the result 
-summ[(nrow(summ)+1),] <- c(params$file, nrow(ff@exprs), method, length(table(clustering)),
-                           number_partitions, mf1$found, mf1$w_found, mf1$all, mf1$w_all,
-                           umap_time[1] + umap_time[4], umap_time[3], ptm[1] + ptm[4], ptm[3])
+mf1 <- mean_f1(cm, cm_merged, matched$merged_labels)
+summ[nrow(summ)+1,] <- c(params$file, nrow(ff@exprs), method, length(table(clustering)),
+                matched$partitions, matched$merged_partitions,
+                mf1$found, mf1$w_found, mf1$all, mf1$w_all, 
+                mf1$merged_found, mf1$merged_w_found, mf1$merged_all, mf1$merged_w_all,
+                umap_time[1] + umap_time[4], umap_time[3], ptm[1] + ptm[4], ptm[3])
 
 # FOR VISUALIZATION
-# Print the unmatched contingency matrix:
-cat("\n", method, "\n")
+cat("\n", method)
+cat("\nContingency matrix")
 print(matched$c)
-# Print the matched confusion matrix:
+cat("\nF1 matrix")
+print(round(matched$f, 2))
+cat("\nConfusion matrix")
 print(cm$table)
+cat("\nConfusion matrix (MERGED)")
+print(cm_merged$table)
 ```
 
 ## ClusterX
@@ -701,31 +879,41 @@ ptm <- proc.time() - ptm
 
 # MATCHING LABELS AND PREDICTIONS
 matched <- matching(clustering, labels)
-number_partitions <- length(table(matched$clusters))
 
 # COMPUTING THE CONFUSION MATRIX AND OTHER PERFORMANCE MEASUREMENTS
 cm <- confusionMatrix(data = matched$clusters[labels != "outliers"],
-                      reference = matched$labels[labels != "outliers"])
+                      reference = labels[labels != "outliers"])
+cm_merged <- confusionMatrix(
+  data = matched$merged_clusters[matched$merged_labels != "outliers"],
+  reference = matched$merged_labels[matched$merged_labels != "outliers"]
+)
+
 # Add the F1 values to a list 
-pops_f1 <- c(pops_f1, cm$byClass[, "F1"])
+#pops_f1 <- c(pops_f1, cm$byClass[, "F1"])
 
 # COMPUTE MEAN F1 and WEIGHTED MEAN F1
-mf1 <- mean_f1(cm, matched$freqs)
-# Storing the result 
-summ[(nrow(summ)+1),] <- c(params$file, nrow(ff@exprs), method, length(table(clustering)),
-                           number_partitions, mf1$found, mf1$w_found, mf1$all, mf1$w_all,
-                           umap_time[1] + umap_time[4], umap_time[3], ptm[1] + ptm[4], ptm[3])
+mf1 <- mean_f1(cm, cm_merged, matched$merged_labels)
+summ[nrow(summ)+1,] <- c(params$file, nrow(ff@exprs), method, length(table(clustering)),
+                matched$partitions, matched$merged_partitions,
+                mf1$found, mf1$w_found, mf1$all, mf1$w_all, 
+                mf1$merged_found, mf1$merged_w_found, mf1$merged_all, mf1$merged_w_all,
+                umap_time[1] + umap_time[4], umap_time[3], ptm[1] + ptm[4], ptm[3])
 
 # FOR VISUALIZATION
-# Print the unmatched contingency matrix:
-cat("\n", method, "\n")
+cat("\n", method)
+cat("\nContingency matrix")
 print(matched$c)
-# Print the matched confusion matrix:
+cat("\nF1 matrix")
+print(round(matched$f, 2))
+cat("\nConfusion matrix")
 print(cm$table)
+cat("\nConfusion matrix (MERGED)")
+print(cm_merged$table)
 ```
 
 # Results
-```{r esults}
+```{r results}
+library(knitr)
 kable(summ)
 ```
 
