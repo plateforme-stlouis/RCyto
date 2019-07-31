@@ -10,15 +10,16 @@ output:
     highlight: tango
 author: Anna Guadall
 params:
-  file: "ff_05_2019-04-18.fcs"
-  labels: "labels_05_2019-04-18"
+  file: ""
+  labels: ""
   outliers:
     label: "0: no outiliers, 1: outliers"
     value: 0
   diff: 
     labels: minimum difference among F1 scores that are not equivalent
     value: 0.05
-  clusters: "5,15,20"
+  clusters: "10,20,30,40"
+  dir: "dir"
 ---
 
 ```{r setup, include=FALSE}
@@ -56,8 +57,9 @@ n_pops <- length(levels(labels)) - params$outliers
 cbind(count(labels), round(ref_pops_freq, 2))
 ```
 
+Date: ``r Sys.Date()``  
 File: ``r params$file``   
-``r nrow(ff@exprs)`` cells.  
+``r nrow(ff@exprs)`` events.  
 `r n_pops` populations.  
 `r ncol(ff@exprs)` parameters.  
 
@@ -97,11 +99,14 @@ matching <- function(clustering, labels){
   # MERGING POPULATIONS (IN CASE ONE CLUSTER MATCHES MANY POPULATIONS)
   merged_labels <- as.character(labels)
   
+  count_merged_pops <- rep(1, length(labels))
+  
   for (i in 1:length(labels)){
     for (j in unlist(col_m)){ 
       if(labels[i] %in% unlist(names(row_m[[j]]))){
         if(unlist(names(row_m[[j]]))[1] == names(col_m[unlist(names(row_m[[j]]))[1]])){
           merged_labels[i] <- paste( unlist( names(row_m[[j]]) ), collapse = "-" )
+          count_merged_pops[i] <- length(unlist( names(row_m[[j]]) ))
         }
       }
     }
@@ -146,48 +151,52 @@ matching <- function(clustering, labels){
   
   matched <- list("c" = c, "f" = f, "m" = m, "merged_labels" = merged_labels,
                   "clusters" = matched_clusters, "merged_clusters" = matched_merged_clusters,
-                  "partitions" = partitions, "merged_partitions" = merged_partitions)
+                  "partitions" = partitions, "merged_partitions" = merged_partitions,
+                  "count_merged_pops" = count_merged_pops)
   return(matched)
 }
 ```
 
 Computing DIFFERENT MEAN F1 scores:
 ```{r f1}
-mean_f1 <- function(cm, cm_merged, merged_labels){
-  # NOT MERGED, FOUND
-  f1_list <- cm$byClass[,"F1"]
-  f1_no_nas <- f1_list[!is.na(f1_list)]   # removing NAs
-  mf1_f <- mean(f1_no_nas)
-  
-  pop_freq <- prop.table(table(labels))
-  pop_freq_no_nas <- pop_freq[!is.na(f1_list)] / sum(pop_freq[!is.na(f1_list)])
-  mf1_f_w <- t(pop_freq_no_nas) %*% f1_no_nas # WEIGHTED MEAN 
-  
+mean_f1 <- function(cm, cm_merged, merged_labels, count_merged_pops){
   # NOT MERGED, ALL
+  f1_list <- cm$byClass[,"F1"]
   f1_zeros <- f1_list
   f1_zeros <- ifelse(is.na(f1_list), 0, f1_list)
-  mf1_all <- mean(f1_zeros)
-  mf1_all_w <- t(pop_freq) %*% f1_zeros # WEIGHTED MEAN 
+  mf1 <- mean(f1_zeros) # MEAN
   
-  # MERGED, FOUND
-  f1_list <- cm_merged$byClass[,"F1"]
-  f1_no_nas <- f1_list[!is.na(f1_list)]   # removing NAs
-  mf1_m_f <- mean(f1_no_nas)
+  # NOT MERGED, ALL, WEIGHTED
+  pop_freq <- prop.table(table(labels))
+  mf1_w <- t(pop_freq) %*% f1_zeros 
   
-  pop_freq <- prop.table(table(merged_labels))
-  pop_freq_no_nas <- pop_freq[!is.na(f1_list)] / sum(pop_freq[!is.na(f1_list)])
-  mf1_m_f_w <- t(pop_freq_no_nas) %*% f1_no_nas # WEIGHTED MEAN 
+  # NOT MERGED, ALL, INVERSED WEIGHTS
+  inv_freq <- prop.table(1/table(labels))
+  mf1_i_w <- t(inv_freq) %*% f1_zeros 
   
   # MERGED, ALL
-  f1_zeros <- f1_list
-  f1_zeros <- ifelse(is.na(f1_list), 0, f1_list)
-  mf1_m_all <- mean(f1_zeros)
-  mf1_m_all_w <- t(pop_freq) %*% f1_zeros # WEIGHTED MEAN 
+  merged_f1_list <- cm_merged$byClass[,"F1"]
+  merged_f1_zeros <- merged_f1_list
+  merged_f1_zeros <- ifelse(is.na(merged_f1_list), 0, merged_f1_list)
+  mf1_m <- mean(merged_f1_zeros) # MEAN
   
-  f1 <- list("found" = mf1_f, "w_found" = mf1_f_w, 
-             "all" = mf1_all, "w_all" = mf1_all_w,
-             "merged_found" = mf1_m_f, "merged_w_found" = mf1_m_f_w, 
-             "merged_all" = mf1_m_all, "merged_w_all" = mf1_m_all_w)
+  # MERGED, CORRECTED
+  merged_table <- table(merged_labels, count_merged_pops)
+  merged_table <- cbind(merged_table, correction = 0)
+  
+  for(i in 1:nrow(merged_table)){
+    for(j in 1:(ncol(merged_table)-1)){
+      if(merged_table[i, j] != 0){
+        merged_table[i, "correction"] <- merged_f1_zeros[i]/as.numeric(colnames(merged_table)[j])
+      }
+    }
+  }
+  
+  mf1_m_all_corrected <- mean(merged_table[,"correction"]) # CORRECTED MEAN
+  
+  f1 <- list("mf1" = mf1, "mf1_w" = mf1_w, "mf1_i_w" = mf1_i_w,
+             "mf1_m" = mf1_m, "mf1_m_c" = mf1_m_all_corrected)
+  
   return(f1)
 }
 ```
@@ -197,10 +206,8 @@ mean_f1 <- function(cm, cm_merged, merged_labels){
 pops_f1 <- c()
 summ <- data.frame(File = NA, n = 0, Method = NA, Clusters = 0, 
                    Partitions = 0, Merged_partitions = 0,
-                   Mean_F1_found = 0, Weighted_mean_F1_found = 0, 
-                   Mean_F1_all = 0, Weighted_mean_F1_all = 0,
-                   Mean_F1_merged_found = 0, Weighted_mean_F1_merged_found = 0, 
-                   Mean_F1_merged_all = 0, Weighted_mean_F1_merged_all = 0,
+                   Mean_F1 = 0, Weighted_mean_F1 = 0, Inversed_weights_mean_F1 = 0,
+                   Mean_F1_merged = 0, Corrected_mean_F1_merged = 0,
                    Reduction_user_time = 0, Reduction_elapsed_time = 0,
                    Clustering_user_time = 0, Clustering_elapsed_time = 0)
 ```
@@ -210,6 +217,27 @@ summ <- data.frame(File = NA, n = 0, Method = NA, Clusters = 0,
 ptm <- proc.time() # measuring CPU time
 tsne_red <-  cytof_dimReduction(data = ff@exprs, method = "tsne", tsneSeed = 42)
 tsne_time <- proc.time() - ptm
+
+tsne_red <- as.data.frame(tsne_red)
+```
+
+```{r tsne plot, fig.width = 12}
+tsne_df <- cbind(as.data.frame(tsne_red), as.data.frame(labels))
+coloring <-  c("darkgoldenrod1", "blue4", "blueviolet", "red", "turquoise", 
+               "burlywood3", "cadetblue", "chartreuse", "chartreuse4", "chocolate1",
+               "plum1", "cornflowerblue", "yellow", "cyan", "blue",
+               "darkgrey","khaki1", "deeppink1", "deeppink4", "black")
+cytof_clusterPlot(data = tsne_df, xlab = "tsne_1", ylab = "tsne_2", point_size = 0.5, labelRepel = F,
+                  cluster = "labels", sampleLabel = FALSE, labelSize = 0, title = "Labels",
+                  clusterColor = coloring[1:n_pops])
+```
+
+```{r tsne plot png}
+png("tsne.png", res=150, width = 2000, height = 1000)
+cytof_clusterPlot(data = tsne_df, xlab = "tsne_1", ylab = "tsne_2", point_size = 0.5, labelRepel = F,
+                  cluster = "labels", sampleLabel = FALSE, labelSize = 0, title = "Labels",
+                  clusterColor = coloring[1:n_pops])
+dev.off()
 ```
 
 # UMAP dimensionality reduction
@@ -219,6 +247,22 @@ umap_red <- umap(ff@exprs, random_state = 42)
 umap_time <- proc.time() - ptm
 
 colnames(umap_red$layout) <- c("UMAP_1", "UMAP_2")
+```
+
+```{r umap plot, fig.width = 12}
+# preparing data for plotting on UMAP:
+umap_df <- cbind(as.data.frame(umap_red$layout), as.data.frame(labels))
+cytof_clusterPlot(data = umap_df, xlab = "UMAP_1", ylab = "UMAP_2", point_size = 0.5, labelRepel = F,
+                  cluster = "labels", sampleLabel = FALSE, labelSize = 0, title = "Labels",
+                  clusterColor = coloring[1:n_pops])
+```
+
+```{r umap plot png}
+png("umap.png", res=150, width = 2000, height = 1000)
+cytof_clusterPlot(data = umap_df, xlab = "UMAP_1", ylab = "UMAP_2", point_size = 0.5, labelRepel = F,
+                  cluster = "labels", sampleLabel = FALSE, labelSize = 0, title = "Labels",
+                  clusterColor = coloring[1:n_pops])
+dev.off()
 ```
 
 # Clustering on all dimensions
@@ -253,15 +297,14 @@ for(i in 1:length(clusters)){
   #pops_f1 <- c(pops_f1, cm$byClass[, "F1"])
   
   # COMPUTE MEAN F1 and WEIGHTED MEAN F1
-  mf1 <- mean_f1(cm, cm_merged, matched$merged_labels)
+  mf1 <- mean_f1(cm, cm_merged, matched$merged_labels, matched$count_merged_pops)
   # Storing the result 
   summ[i,c(1,3)] <- c(params$file, method)
   summ[i,-c(1,3)] <- c(nrow(ff@exprs), clusters[i],
                        matched$partitions, matched$merged_partitions,
-                       mf1$found, mf1$w_found, mf1$all, mf1$w_all, 
-                       mf1$merged_found, mf1$merged_w_found, mf1$merged_all, mf1$merged_w_all,
+                       mf1$mf1, mf1$mf1_w, mf1$mf1_i_w, mf1$mf1_m, mf1$mf1_m_c, 
                        NA, NA, ptm[1] + ptm[4], ptm[3])
-
+  
   # FOR VISUALIZATION
   cat("\n", method, clusters[i], "clusters\n")
   cat("\nContingency matrix")
@@ -301,13 +344,12 @@ cm_merged <- confusionMatrix(
 #pops_f1 <- c(pops_f1, cm$byClass[, "F1"])
 
 # COMPUTE MEAN F1 and WEIGHTED MEAN F1
-mf1 <- mean_f1(cm, cm_merged, matched$merged_labels)
+mf1 <- mean_f1(cm, cm_merged, matched$merged_labels, matched$count_merged_pops)
 summ[nrow(summ)+1,c(1,3)] <- c(params$file, method)
 summ[nrow(summ),-c(1,3)] <- c(nrow(ff@exprs), length(table(clustering)),
-                                matched$partitions, matched$merged_partitions,
-                                mf1$found, mf1$w_found, mf1$all, mf1$w_all, 
-                                mf1$merged_found, mf1$merged_w_found, mf1$merged_all, mf1$merged_w_all,
-                                NA, NA, ptm[1] + ptm[4], ptm[3])
+                              matched$partitions, matched$merged_partitions,
+                              mf1$mf1, mf1$mf1_w, mf1$mf1_i_w, mf1$mf1_m, mf1$mf1_m_c, 
+                              NA, NA, ptm[1] + ptm[4], ptm[3])
 
 # FOR VISUALIZATION
 cat("\n", method)
@@ -347,14 +389,12 @@ cm_merged <- confusionMatrix(
 #pops_f1 <- c(pops_f1, cm$byClass[, "F1"])
 
 # COMPUTE MEAN F1 and WEIGHTED MEAN F1
-mf1 <- mean_f1(cm, cm_merged, matched$merged_labels)
+mf1 <- mean_f1(cm, cm_merged, matched$merged_labels, matched$count_merged_pops)
 summ[nrow(summ)+1,c(1,3)] <- c(params$file, method)
 summ[nrow(summ),-c(1,3)] <- c(nrow(ff@exprs), length(table(clustering)),
-                                matched$partitions, matched$merged_partitions,
-                                mf1$found, mf1$w_found, mf1$all, mf1$w_all, 
-                                mf1$merged_found, mf1$merged_w_found, mf1$merged_all, mf1$merged_w_all,
-                                NA, NA, ptm[1] + ptm[4], ptm[3])
-
+                              matched$partitions, matched$merged_partitions,
+                              mf1$mf1, mf1$mf1_w, mf1$mf1_i_w, mf1$mf1_m, mf1$mf1_m_c, 
+                              NA, NA, ptm[1] + ptm[4], ptm[3])
 # FOR VISUALIZATION
 cat("\n", method)
 cat("\nContingency matrix")
@@ -393,12 +433,11 @@ cm_merged <- confusionMatrix(
 #pops_f1 <- c(pops_f1, cm$byClass[, "F1"])
 
 # COMPUTE MEAN F1 and WEIGHTED MEAN F1
-mf1 <- mean_f1(cm, cm_merged, matched$merged_labels)
+mf1 <- mean_f1(cm, cm_merged, matched$merged_labels, matched$count_merged_pops)
 summ[nrow(summ)+1, c(1,3)] <- c(params$file, method)
 summ[nrow(summ), -c(1,3)] <- c(nrow(ff@exprs), length(table(clustering)),
                               matched$partitions, matched$merged_partitions,
-                              mf1$found, mf1$w_found, mf1$all, mf1$w_all, 
-                              mf1$merged_found, mf1$merged_w_found, mf1$merged_all, mf1$merged_w_all,
+                              mf1$mf1, mf1$mf1_w, mf1$mf1_i_w, mf1$mf1_m, mf1$mf1_m_c, 
                               NA, NA, ptm[1] + ptm[4], ptm[3])
 
 # FOR VISUALIZATION
@@ -439,12 +478,11 @@ cm_merged <- confusionMatrix(
 #pops_f1 <- c(pops_f1, cm$byClass[, "F1"])
 
 # COMPUTE MEAN F1 and WEIGHTED MEAN F1
-mf1 <- mean_f1(cm, cm_merged, matched$merged_labels)
+mf1 <- mean_f1(cm, cm_merged, matched$merged_labels, matched$count_merged_pops)
 summ[nrow(summ)+1, c(1,3)] <- c(params$file, method)
 summ[nrow(summ), -c(1,3)] <- c(nrow(ff@exprs), length(table(clustering)),
                               matched$partitions, matched$merged_partitions,
-                              mf1$found, mf1$w_found, mf1$all, mf1$w_all, 
-                              mf1$merged_found, mf1$merged_w_found, mf1$merged_all, mf1$merged_w_all,
+                              mf1$mf1, mf1$mf1_w, mf1$mf1_i_w, mf1$mf1_m, mf1$mf1_m_c, 
                               NA, NA, ptm[1] + ptm[4], ptm[3])
 
 # FOR VISUALIZATION
@@ -486,13 +524,12 @@ cm_merged <- confusionMatrix(
 #pops_f1 <- c(pops_f1, cm$byClass[, "F1"])
 
 # COMPUTE MEAN F1 and WEIGHTED MEAN F1
-mf1 <- mean_f1(cm, cm_merged, matched$merged_labels)
+mf1 <- mean_f1(cm, cm_merged, matched$merged_labels, matched$count_merged_pops)
 summ[nrow(summ)+1, c(1,3)] <- c(params$file, method)
 summ[nrow(summ), -c(1,3)] <- c(nrow(ff@exprs), length(table(clustering)),
-                              matched$partitions, matched$merged_partitions,
-                              mf1$found, mf1$w_found, mf1$all, mf1$w_all, 
-                              mf1$merged_found, mf1$merged_w_found, mf1$merged_all, mf1$merged_w_all,
-                              tsne_time[1] + tsne_time[4], tsne_time[3], ptm[1] + ptm[4], ptm[3])
+                               matched$partitions, matched$merged_partitions,
+                               mf1$mf1, mf1$mf1_w, mf1$mf1_i_w, mf1$mf1_m, mf1$mf1_m_c, 
+                               tsne_time[1] + tsne_time[4], tsne_time[3], ptm[1] + ptm[4], ptm[3])
 
 # FOR VISUALIZATION
 cat("\n", method)
@@ -532,12 +569,12 @@ cm_merged <- confusionMatrix(
 #pops_f1 <- c(pops_f1, cm$byClass[, "F1"])
 
 # COMPUTE MEAN F1 and WEIGHTED MEAN F1
+mf1 <- mean_f1(cm, cm_merged, matched$merged_labels, matched$count_merged_pops)
 summ[nrow(summ)+1, c(1,3)] <- c(params$file, method)
 summ[nrow(summ), -c(1,3)] <- c(nrow(ff@exprs), length(table(clustering)),
-                              matched$partitions, matched$merged_partitions,
-                              mf1$found, mf1$w_found, mf1$all, mf1$w_all, 
-                              mf1$merged_found, mf1$merged_w_found, mf1$merged_all, mf1$merged_w_all,
-                              tsne_time[1] + tsne_time[4], tsne_time[3], ptm[1] + ptm[4], ptm[3])
+                               matched$partitions, matched$merged_partitions,
+                               mf1$mf1, mf1$mf1_w, mf1$mf1_i_w, mf1$mf1_m, mf1$mf1_m_c, 
+                               tsne_time[1] + tsne_time[4], tsne_time[3], ptm[1] + ptm[4], ptm[3])
 
 
 # FOR VISUALIZATION
@@ -578,13 +615,12 @@ cm_merged <- confusionMatrix(
 #pops_f1 <- c(pops_f1, cm$byClass[, "F1"])
 
 # COMPUTE MEAN F1 and WEIGHTED MEAN F1
-mf1 <- mean_f1(cm, cm_merged, matched$merged_labels)
+mf1 <- mean_f1(cm, cm_merged, matched$merged_labels, matched$count_merged_pops)
 summ[nrow(summ)+1, c(1,3)] <- c(params$file, method)
 summ[nrow(summ), -c(1,3)] <- c(nrow(ff@exprs), length(table(clustering)),
-                              matched$partitions, matched$merged_partitions,
-                              mf1$found, mf1$w_found, mf1$all, mf1$w_all, 
-                              mf1$merged_found, mf1$merged_w_found, mf1$merged_all, mf1$merged_w_all,
-                              tsne_time[1] + tsne_time[4], tsne_time[3], ptm[1] + ptm[4], ptm[3])
+                               matched$partitions, matched$merged_partitions,
+                               mf1$mf1, mf1$mf1_w, mf1$mf1_i_w, mf1$mf1_m, mf1$mf1_m_c, 
+                               tsne_time[1] + tsne_time[4], tsne_time[3], ptm[1] + ptm[4], ptm[3])
 
 # FOR VISUALIZATION
 cat("\n", method)
@@ -624,13 +660,12 @@ cm_merged <- confusionMatrix(
 #pops_f1 <- c(pops_f1, cm$byClass[, "F1"])
 
 # COMPUTE MEAN F1 and WEIGHTED MEAN F1
-mf1 <- mean_f1(cm, cm_merged, matched$merged_labels)
+mf1 <- mean_f1(cm, cm_merged, matched$merged_labels, matched$count_merged_pops)
 summ[nrow(summ)+1, c(1,3)] <- c(params$file, method)
 summ[nrow(summ), -c(1,3)] <- c(nrow(ff@exprs), length(table(clustering)),
-                              matched$partitions, matched$merged_partitions,
-                              mf1$found, mf1$w_found, mf1$all, mf1$w_all, 
-                              mf1$merged_found, mf1$merged_w_found, mf1$merged_all, mf1$merged_w_all,
-                              tsne_time[1] + tsne_time[4], tsne_time[3], ptm[1] + ptm[4], ptm[3])
+                               matched$partitions, matched$merged_partitions,
+                               mf1$mf1, mf1$mf1_w, mf1$mf1_i_w, mf1$mf1_m, mf1$mf1_m_c, 
+                               tsne_time[1] + tsne_time[4], tsne_time[3], ptm[1] + ptm[4], ptm[3])
 
 # FOR VISUALIZATION
 cat("\n", method)
@@ -668,12 +703,11 @@ cm_merged <- confusionMatrix(
 #pops_f1 <- c(pops_f1, cm$byClass[, "F1"])
 
 # COMPUTE MEAN F1 and WEIGHTED MEAN F1
-mf1 <- mean_f1(cm, cm_merged, matched$merged_labels)
+mf1 <- mean_f1(cm, cm_merged, matched$merged_labels, matched$count_merged_pops)
 summ[nrow(summ)+1,] <- c(params$file, nrow(ff@exprs), method, length(table(clustering)),
-                matched$partitions, matched$merged_partitions,
-                mf1$found, mf1$w_found, mf1$all, mf1$w_all, 
-                mf1$merged_found, mf1$merged_w_found, mf1$merged_all, mf1$merged_w_all,
-                tsne_time[1] + tsne_time[4], tsne_time[3], ptm[1] + ptm[4], ptm[3])
+                         matched$partitions, matched$merged_partitions,
+                         mf1$mf1, mf1$mf1_w, mf1$mf1_i_w, mf1$mf1_m, mf1$mf1_m_c, 
+                         tsne_time[1] + tsne_time[4], tsne_time[3], ptm[1] + ptm[4], ptm[3])
 
 # FOR VISUALIZATION
 cat("\n", method)
@@ -714,12 +748,11 @@ cm_merged <- confusionMatrix(
 #pops_f1 <- c(pops_f1, cm$byClass[, "F1"])
 
 # COMPUTE MEAN F1 and WEIGHTED MEAN F1
-mf1 <- mean_f1(cm, cm_merged, matched$merged_labels)
+mf1 <- mean_f1(cm, cm_merged, matched$merged_labels, matched$count_merged_pops)
 summ[nrow(summ)+1,] <- c(params$file, nrow(ff@exprs), method, length(table(clustering)),
-                matched$partitions, matched$merged_partitions,
-                mf1$found, mf1$w_found, mf1$all, mf1$w_all, 
-                mf1$merged_found, mf1$merged_w_found, mf1$merged_all, mf1$merged_w_all,
-                umap_time[1] + umap_time[4], umap_time[3], ptm[1] + ptm[4], ptm[3])
+                         matched$partitions, matched$merged_partitions,
+                         mf1$mf1, mf1$mf1_w, mf1$mf1_i_w, mf1$mf1_m, mf1$mf1_m_c, 
+                         umap_time[1] + umap_time[4], umap_time[3], ptm[1] + ptm[4], ptm[3])
 
 # FOR VISUALIZATION
 cat("\n", method)
@@ -759,12 +792,11 @@ cm_merged <- confusionMatrix(
 #pops_f1 <- c(pops_f1, cm$byClass[, "F1"])
 
 # COMPUTE MEAN F1 and WEIGHTED MEAN F1
-mf1 <- mean_f1(cm, cm_merged, matched$merged_labels)
+mf1 <- mean_f1(cm, cm_merged, matched$merged_labels, matched$count_merged_pops)
 summ[nrow(summ)+1,] <- c(params$file, nrow(ff@exprs), method, length(table(clustering)),
-                matched$partitions, matched$merged_partitions,
-                mf1$found, mf1$w_found, mf1$all, mf1$w_all, 
-                mf1$merged_found, mf1$merged_w_found, mf1$merged_all, mf1$merged_w_all,
-                umap_time[1] + umap_time[4], umap_time[3], ptm[1] + ptm[4], ptm[3])
+                         matched$partitions, matched$merged_partitions,
+                         mf1$mf1, mf1$mf1_w, mf1$mf1_i_w, mf1$mf1_m, mf1$mf1_m_c, 
+                         umap_time[1] + umap_time[4], umap_time[3], ptm[1] + ptm[4], ptm[3])
 
 # FOR VISUALIZATION
 cat("\n", method)
@@ -804,12 +836,11 @@ cm_merged <- confusionMatrix(
 #pops_f1 <- c(pops_f1, cm$byClass[, "F1"])
 
 # COMPUTE MEAN F1 and WEIGHTED MEAN F1
-mf1 <- mean_f1(cm, cm_merged, matched$merged_labels)
+mf1 <- mean_f1(cm, cm_merged, matched$merged_labels, matched$count_merged_pops)
 summ[nrow(summ)+1,] <- c(params$file, nrow(ff@exprs), method, length(table(clustering)),
-                matched$partitions, matched$merged_partitions,
-                mf1$found, mf1$w_found, mf1$all, mf1$w_all, 
-                mf1$merged_found, mf1$merged_w_found, mf1$merged_all, mf1$merged_w_all,
-                umap_time[1] + umap_time[4], umap_time[3], ptm[1] + ptm[4], ptm[3])
+                         matched$partitions, matched$merged_partitions,
+                         mf1$mf1, mf1$mf1_w, mf1$mf1_i_w, mf1$mf1_m, mf1$mf1_m_c, 
+                         umap_time[1] + umap_time[4], umap_time[3], ptm[1] + ptm[4], ptm[3])
 
 # FOR VISUALIZATION
 cat("\n", method)
@@ -849,12 +880,11 @@ cm_merged <- confusionMatrix(
 #pops_f1 <- c(pops_f1, cm$byClass[, "F1"])
 
 # COMPUTE MEAN F1 and WEIGHTED MEAN F1
-mf1 <- mean_f1(cm, cm_merged, matched$merged_labels)
+mf1 <- mean_f1(cm, cm_merged, matched$merged_labels, matched$count_merged_pops)
 summ[nrow(summ)+1,] <- c(params$file, nrow(ff@exprs), method, length(table(clustering)),
-                matched$partitions, matched$merged_partitions,
-                mf1$found, mf1$w_found, mf1$all, mf1$w_all, 
-                mf1$merged_found, mf1$merged_w_found, mf1$merged_all, mf1$merged_w_all,
-                umap_time[1] + umap_time[4], umap_time[3], ptm[1] + ptm[4], ptm[3])
+                         matched$partitions, matched$merged_partitions,
+                         mf1$mf1, mf1$mf1_w, mf1$mf1_i_w, mf1$mf1_m, mf1$mf1_m_c, 
+                         umap_time[1] + umap_time[4], umap_time[3], ptm[1] + ptm[4], ptm[3])
 
 # FOR VISUALIZATION
 cat("\n", method)
@@ -892,12 +922,11 @@ cm_merged <- confusionMatrix(
 #pops_f1 <- c(pops_f1, cm$byClass[, "F1"])
 
 # COMPUTE MEAN F1 and WEIGHTED MEAN F1
-mf1 <- mean_f1(cm, cm_merged, matched$merged_labels)
+mf1 <- mean_f1(cm, cm_merged, matched$merged_labels, matched$count_merged_pops)
 summ[nrow(summ)+1,] <- c(params$file, nrow(ff@exprs), method, length(table(clustering)),
-                matched$partitions, matched$merged_partitions,
-                mf1$found, mf1$w_found, mf1$all, mf1$w_all, 
-                mf1$merged_found, mf1$merged_w_found, mf1$merged_all, mf1$merged_w_all,
-                umap_time[1] + umap_time[4], umap_time[3], ptm[1] + ptm[4], ptm[3])
+                         matched$partitions, matched$merged_partitions,
+                         mf1$mf1, mf1$mf1_w, mf1$mf1_i_w, mf1$mf1_m, mf1$mf1_m_c, 
+                         umap_time[1] + umap_time[4], umap_time[3], ptm[1] + ptm[4], ptm[3])
 
 # FOR VISUALIZATION
 cat("\n", method)
@@ -914,12 +943,23 @@ print(cm_merged$table)
 # Results
 ```{r results}
 library(knitr)
-kable(summ)
+for(i in 7:15){
+  summ[,i] <- as.numeric(summ[,i])
+}
+
+kable(summ, digits = 3)
 ```
 
+```{r}
+# export results (mean F1)
+write.table(summ, 
+            file =  file.path("files", params$dir, "summary.txt"), append = T, sep = "\t", row.names = F, col.names = T)
+```
 
-
-
+# Libraries
+```{r}
+sessionInfo()
+```
 
 
 

@@ -142,6 +142,17 @@ https://www.sciencedirect.com/science/article/pii/S200103701830059X
 BiocManager::install("cytofast")
 ```
 
+### ncdFlow
+```{r}
+if (!requireNamespace("BiocManager", quietly = TRUE))
+    install.packages("BiocManager")
+BiocManager::install("ncdfFlow")
+```
+
+```{r}
+browseVignettes("ncdfFlow")
+```
+
 ## Updating installed Bioconductor Packages
 ```{r}
 BiocManager::install()
@@ -171,7 +182,8 @@ https://github.com/JinmiaoChenLab/Rphenograph
 
 ## Cytofkit
 cytofkit: an integrated mass cytometry data analysis pipeline  
-https://www.rdocumentation.org/packages/cytofkit/versions/1.4.8
+https://www.rdocumentation.org/packages/cytofkit/versions/1.4.8  
+https://github.com/JinmiaoChenLab/cytofkit/blob/master/vignettes/cytofkit_example.Rmd  
 ```{r}
 devtools::install_github("JinmiaoChenLab/cytofkit")
 ```
