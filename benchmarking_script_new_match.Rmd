@@ -458,7 +458,7 @@ method <- "DEPECHE"
 
 # clustering
 ptm <- proc.time() # measuring CPU time
-pred <-  depeche(ff@exprs)
+pred <-  depeche(ff@exprs, createOutput = F)
 ptm <- proc.time() - ptm
 
 clustering <- pred$clusterVector
@@ -595,7 +595,7 @@ method <- "t-SNE + flowPeaks"
 
 # clustering
 ptm <- proc.time() # measuring CPU time
-pred <- flowPeaks(tsne_red) # default k = 30 nearest neighbours
+pred <- flowPeaks(tsne_red) 
 ptm <- proc.time() - ptm
 
 clustering <- pred$peaks.cluster
@@ -640,7 +640,7 @@ method <- "t-SNE + DEPECHE"
 
 # clustering
 ptm <- proc.time() # measuring CPU time
-pred <-  depeche(tsne_red)
+pred <-  depeche(tsne_red, createOutput = F)
 ptm <- proc.time() - ptm
 
 clustering <- pred$clusterVector
@@ -816,7 +816,7 @@ method <- "UMAP + flowPeaks"
 
 # clustering
 ptm <- proc.time() # measuring CPU time
-pred <- flowPeaks(umap_red$layout) # default k = 30 nearest neighbours
+pred <- flowPeaks(umap_red$layout)
 ptm <- proc.time() - ptm
 
 clustering <- pred$peaks.cluster
@@ -860,7 +860,7 @@ method <- "UMAP + DEPECHE"
 
 # clustering
 ptm <- proc.time() # measuring CPU time
-pred <-  depeche(umap_red$layout)
+pred <-  depeche(umap_red$layout, createOutput = F)
 ptm <- proc.time() - ptm
 
 clustering <- pred$clusterVector
