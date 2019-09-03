@@ -2,9 +2,9 @@
 title: "POP generator"
 output: html_document
 params:
-  pop_number: "06"
-  cells: 50000
-  seed: 1239
+  pop_number: "05_05_a"
+  cells: 5000
+  seed: 23
 ---
 
 ```{r setup, include=FALSE}
@@ -12,6 +12,10 @@ knitr::opts_chunk$set(echo = TRUE)
 ```
 
 # Parameters
+```{r}
+params
+```
+
 ```{r INFO}
 # MFI values for NEG and POS cells
 neg_mean <- 50
@@ -107,7 +111,7 @@ rownames(pop) <- 1:n # Renaming the rows (in order)
 
 
 # Save the column with the cell labels to a file
-saveRDS(pop$cells, paste("labels", params$pop_number, Sys.Date(), sep = "_"))
+saveRDS(pop$cells,  paste("labels", params$pop_number, Sys.Date(), sep = "_"))
 
 head(pop)
 ```
@@ -119,7 +123,7 @@ for(i in 1:length(markers)){
 }
 ```
 
-```{r}
+```{r, eval = F}
 plot(pop[,2:(length(markers)+1)])
 ```
 
@@ -131,18 +135,18 @@ ff <- new("flowFrame", exprs = as.matrix(pop[,-1]))
 head(ff@exprs)
 ```
 
-```{r}
+```{r, eval = F}
 library(ggcyto)
 autoplot(ff, markers[1], markers[5])
 ```
 
-```{r}
+```{r, eval = F}
 autoplot(ff, markers[1])
 ```
 
 # Export to .fcs
 ```{r, eval = T}
-write.FCS(ff, paste("ff_", params$pop_number, "_", Sys.Date(), ".fcs", sep = ""))
+write.FCS(ff, paste("ff_", params$pop_number, "_", Sys.Date(), ".fcs", sep = "")) 
 ```
 
 
