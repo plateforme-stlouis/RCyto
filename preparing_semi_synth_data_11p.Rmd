@@ -1,0 +1,372 @@
+---
+title: "Preparing real data: 11 parameters"
+output: html_document
+params:
+  experience: "20190716_billes"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, cache = T)
+```
+
+```{r}
+library(flowWorkspace)
+library(caret)
+library(flowCore)
+```
+
+# Introduction
+An `R Markdown` script has been developed in order to prepare flow cytometry data for algorithm benchmarking. The data has been previously pre-treated and gated in `FlowJo`. This script enables importing and exploring the data, applying the gating strategy performed on `FlowJo`, labelling the examples according to this gating, performing down-sampling and exporting the data for further analysis. 
+
+# Data
+Stained beads (11 markers), 18 detectors.
+
+# Parameters
+```{r}
+params
+```
+
+# Open `fcs` files
+## Compensated
+```{r}
+comp <- list.files(".", pattern = "compens_18") # Compensated
+```
+
+```{r}
+colnames(read.FCS("compens_18_01_NK.fcs")@exprs)
+```
+\  
+
+We are interested in columns 1:22.
+
+Files:
+```{r}
+comp
+```
+\  
+
+Label list:
+```{r}
+label_list <- c("P01", "P02", "P03", "P04", "P05", "P06", "P07", "P08", "P09", "P10", 
+                "P11", "P12", "P13", "P14", "P15", "P16", "P17", "P18", "P19", "P20")
+```
+
+Open the compensated files and put the selected columns in a labelled dataframe,:
+```{r}
+j <- 1
+for(i in 1:length(comp)){
+  c <- as.data.frame(read.FCS(comp[i])@exprs[,1:22])
+  c <- cbind(c, label = label_list[i])
+  if(j == 1){
+    data_comp <- c
+  }else{
+    data_comp <- rbind(data_comp, c)
+  }
+  j <- j + 1
+  rm(c)
+}
+
+summary(data_comp[,"label"])
+```
+
+## Uncompensated data
+```{r}
+( uncomp <- list.files(".", pattern = "uncomp") )
+```
+
+Open the uncompensated files and put the selected columns in a labelled dataframe,:
+```{r}
+j <- 1
+for(i in 1:length(uncomp)){
+  c <- as.data.frame(read.FCS(uncomp[i])@exprs[,1:22])
+  c <- cbind(c, label = label_list[i])
+  if(j == 1){
+    data_uncomp <- c
+  }else{
+    data_uncomp <- rbind(data_uncomp, c)
+  }
+  j <- j + 1
+  rm(c)
+}
+
+table(summary(data_comp[,"label"]) == summary(data_uncomp[,"label"]))
+```
+
+# Naming the variables
+```{r}
+colnames(data_comp)
+```
+
+Replacing the fluorophores by the markers:
+```{r}
+colnames(data_comp)[5:22] <-  c("355-A-A", "355-B-A", "CD25_BV786",
+                           "405-B-A", "CD45RA_BV650", "405-D-A",
+                           "405-E-A", "CD27_BV786", "CD8a_PerCP-Cy55", 
+                           "CD4_BB515", "CCR7_PE-Cy7", "561-B-A",
+                           "561-C-A", "CD19_PECF554", "CD3_PE",
+                           "CD56_APCH7", "CD127_APC-R700", "CD38-APC")
+colnames(data_uncomp) <- colnames(data_comp)
+colnames(data_comp)
+```
+
+# Frequencies
+Bead frequencies are completely arbitrary.
+```{r}
+(comp_freq <- (prop.table(table(data_comp$label))))
+```
+
+## Equivalent frequencies:
+```{r}
+# looking for the minimum
+min_beads <-  which.min(table(data_comp$label))
+
+table(data_comp$label)[min_beads]
+```
+
+We could do 15621*20 = 312420 beads, but it is weird.  
+We wil take 15000 beads/pop in order to have a final sample with 300000 beads.
+
+```{r}
+n <- 15000
+down_sample <- c()
+
+set.seed(23)
+for(i in 1:length(label_list)){
+  sel <- sample(rownames(data_comp[data_comp$label == label_list[i],]), n, replace = F) 
+  down_sample <- c(down_sample, sel)
+  rm(sel)
+}
+
+data_comp_eq <- data_comp[down_sample,]
+table(data_comp_eq$label)
+```
+
+Great
+```{r}
+data_uncomp_eq <- data_uncomp[down_sample,]
+table(data_uncomp_eq$label)
+```
+
+## Different frequencies
+Let's use the frequancies used to generate synthetic samples for this experimental design:
+```{r}
+(theo_props <- readRDS("props_13_a_2019-08-01")/100 )
+```
+
+Which is the limitant?  
+If we take the max freq:
+```{r}
+max_freq <- which.max(theo_props)
+theo_props[max_freq]
+table(data_comp$label)[max_freq]
+```
+
+So, the total number of beads will be:
+```{r}
+(tot <- floor(table(data_comp$label)[max_freq]/theo_props[max_freq]))
+```
+
+Thus, the number of cells for each population will be:
+```{r}
+(ns <- round(tot * theo_props))
+```
+
+```{r}
+sum(ns)
+```
+
+If we substract these numbers to the toal number of beads:
+```{r}
+table(data_comp$label) - ns
+```
+
+Great. Let's do the sample:
+```{r}
+down_sample <- c()
+
+set.seed(23)
+for(i in 1:length(theo_props)){
+  sel <- sample(rownames(data_comp[data_comp$label == label_list[i],]), ns[i], replace = F) 
+  down_sample <- c(down_sample, sel)
+  rm(sel)
+}
+
+data_comp_diff <- data_comp[down_sample,]
+table(data_comp_diff$label)
+```
+
+```{r}
+data_uncomp_diff <- data_comp[down_sample,]
+table(table(data_uncomp_diff$label) == table(data_comp_diff$label))
+```
+
+
+# Rearranging
+We have 3 kind of samples, in compensate and uncompensate version.  
+Let's randomly rearrange all of them:
+```{r}
+## ALL THE BEADS
+(n <- nrow(data_comp))
+```
+
+```{r}
+# Randomly sampling
+set.seed(42)
+x <- sample(1:n, n, replace = F)
+
+# Rearranging the dataframes
+data_comp <-data_comp[x,] 
+data_uncomp <-data_uncomp[x,] 
+
+# Renaming the rows (in order)
+rownames(data_comp) <- 1:n 
+rownames(data_uncomp) <- 1:n 
+
+## EQUAL FREQUENCIES
+n <- nrow(data_comp_eq)
+
+# Randomly sampling
+set.seed(42)
+x <- sample(1:n, n, replace = F)
+
+# Rearranging the dataframes
+data_comp_eq <-data_comp_eq[x,] 
+data_uncomp_eq <-data_uncomp_eq[x,] 
+
+# Renaming the rows (in order)
+rownames(data_comp_eq) <- 1:n 
+rownames(data_uncomp_eq) <- 1:n 
+
+## DIFFERENT FREQUENCIES
+n <- nrow(data_comp_diff)
+
+# Randomly sampling
+set.seed(42)
+x <- sample(1:n, n, replace = F)
+
+# Rearranging the dataframes
+data_comp_diff <-data_comp_diff[x,] 
+data_uncomp_diff <-data_uncomp_diff[x,] 
+
+# Renaming the rows (in order)
+rownames(data_comp_diff) <- 1:n 
+rownames(data_uncomp_diff) <- 1:n 
+```
+
+
+# Conversion to `FlowFrame` class objects and export to `.fcs`
+## All parameters
+```{r}
+library(flowCore)
+ff_comp <- new("flowFrame", exprs = as.matrix(data_comp[, 1:22])) # 1:22 channels, w/o the labels
+ff_uncomp <- new("flowFrame", exprs = as.matrix(data_uncomp[, 1:22]))
+ff_comp_eq <- new("flowFrame", exprs = as.matrix(data_comp_eq[, 1:22])) 
+ff_uncomp_eq <- new("flowFrame", exprs = as.matrix(data_uncomp_eq[, 1:22]))
+ff_comp_diff <- new("flowFrame", exprs = as.matrix(data_comp_diff[, 1:22]))  
+ff_uncomp_diff <- new("flowFrame", exprs = as.matrix(data_uncomp_diff[, 1:22]))
+summary(ff_comp)
+```
+
+```{r}
+write.FCS(ff_comp, paste("ff_comp_18_all_", params$experience, "_", params$beads, ".fcs", sep = ""))
+write.FCS(ff_uncomp, paste("ff_non_comp_18_all_", params$experience, "_", params$beads, ".fcs", sep = ""))
+write.FCS(ff_comp_eq, paste("ff_comp_eq_18_all_", params$experience, "_", params$beads, ".fcs", sep = ""))
+write.FCS(ff_uncomp_eq, paste("ff_non_comp_18_eq_all_", params$experience, "_", params$beads, ".fcs", sep = ""))
+write.FCS(ff_comp_diff, paste("ff_comp_diff_18_all_", params$experience, "_", params$beads, ".fcs", sep = ""))
+write.FCS(ff_uncomp_diff, paste("ff_non_comp_diff_18_all_", params$experience, "_", params$beads, ".fcs", sep = ""))
+```
+
+## All detectors, without FSC, SSC
+```{r}
+ff_comp <- new("flowFrame", exprs = as.matrix(data_comp[, 5:22])) # 1:22 channels, w/o the labels
+ff_uncomp <- new("flowFrame", exprs = as.matrix(data_uncomp[, 5:22]))
+ff_comp_eq <- new("flowFrame", exprs = as.matrix(data_comp_eq[, 5:22])) 
+ff_uncomp_eq <- new("flowFrame", exprs = as.matrix(data_uncomp_eq[, 5:22]))
+ff_comp_diff <- new("flowFrame", exprs = as.matrix(data_comp_diff[, 5:22]))  
+ff_uncomp_diff <- new("flowFrame", exprs = as.matrix(data_uncomp_diff[, 5:22]))
+summary(ff_comp)
+```
+
+```{r}
+write.FCS(ff_comp, paste("ff_comp_18_fluo_", params$experience, "_", params$beads, ".fcs", sep = ""))
+write.FCS(ff_uncomp, paste("ff_non_comp_18_fluo_", params$experience, "_", params$beads, ".fcs", sep = ""))
+write.FCS(ff_comp_eq, paste("ff_comp_eq_18_fluo_", params$experience, "_", params$beads, ".fcs", sep = ""))
+write.FCS(ff_uncomp_eq, paste("ff_non_comp_eq_18_fluo_", params$experience, "_", params$beads, ".fcs", sep = ""))
+write.FCS(ff_comp_diff, paste("ff_comp_diff_18_fluo_", params$experience, "_", params$beads, ".fcs", sep = ""))
+write.FCS(ff_uncomp_diff, paste("ff_non_comp_diff_18_fluo_", params$experience, "_", params$beads, ".fcs", sep = ""))
+```
+
+## 11 detectors (with FSC, SSC)
+```{r}
+colnames(data_comp)
+```
+
+```{r}
+(c <- colnames(data_comp)[c(1,2,3,4,7,9,12,13,14,15,18,19,20,21,22)])
+```
+
+```{r}
+ff_comp <- new("flowFrame", exprs = as.matrix(data_comp[, c])) # 1:22 channels, w/o the labels
+ff_uncomp <- new("flowFrame", exprs = as.matrix(data_uncomp[, c]))
+ff_comp_eq <- new("flowFrame", exprs = as.matrix(data_comp_eq[, c])) 
+ff_uncomp_eq <- new("flowFrame", exprs = as.matrix(data_uncomp_eq[, c]))
+ff_comp_diff <- new("flowFrame", exprs = as.matrix(data_comp_diff[, c]))  
+ff_uncomp_diff <- new("flowFrame", exprs = as.matrix(data_uncomp_diff[, c]))
+summary(ff_comp)
+```
+
+```{r}
+write.FCS(ff_comp, paste("ff_comp_11_all_", params$experience, "_", params$beads, ".fcs", sep = ""))
+write.FCS(ff_uncomp, paste("ff_non_comp_11_all_", params$experience, "_", params$beads, ".fcs", sep = ""))
+write.FCS(ff_comp_eq, paste("ff_comp_eq_11_all_", params$experience, "_", params$beads, ".fcs", sep = ""))
+write.FCS(ff_uncomp_eq, paste("ff_non_comp_11_eq_all_", params$experience, "_", params$beads, ".fcs", sep = ""))
+write.FCS(ff_comp_diff, paste("ff_comp_diff_11_all_", params$experience, "_", params$beads, ".fcs", sep = ""))
+write.FCS(ff_uncomp_diff, paste("ff_non_comp_diff_11_all_", params$experience, "_", params$beads, ".fcs", sep = ""))
+```
+
+## 11 detectors (without FSC, SSC)
+```{r}
+(c <- colnames(data_comp)[c(7,9,12,13,14,15,18,19,20,21,22)])
+```
+
+```{r}
+ff_comp <- new("flowFrame", exprs = as.matrix(data_comp[, c])) # 1:22 channels, w/o the labels
+ff_uncomp <- new("flowFrame", exprs = as.matrix(data_uncomp[, c]))
+ff_comp_eq <- new("flowFrame", exprs = as.matrix(data_comp_eq[, c])) 
+ff_uncomp_eq <- new("flowFrame", exprs = as.matrix(data_uncomp_eq[, c]))
+ff_comp_diff <- new("flowFrame", exprs = as.matrix(data_comp_diff[, c]))  
+ff_uncomp_diff <- new("flowFrame", exprs = as.matrix(data_uncomp_diff[, c]))
+summary(ff_comp)
+```
+
+```{r}
+write.FCS(ff_comp, paste("ff_comp_11_fluo_", params$experience, "_", params$beads, ".fcs", sep = ""))
+write.FCS(ff_uncomp, paste("ff_non_comp_11_fluo_", params$experience, "_", params$beads, ".fcs", sep = ""))
+write.FCS(ff_comp_eq, paste("ff_comp_eq_11_fluo_", params$experience, "_", params$beads, ".fcs", sep = ""))
+write.FCS(ff_uncomp_eq, paste("ff_non_comp_11_eq_fluo_", params$experience, "_", params$beads, ".fcs", sep = ""))
+write.FCS(ff_comp_diff, paste("ff_comp_diff_11_fluo_", params$experience, "_", params$beads, ".fcs", sep = ""))
+write.FCS(ff_uncomp_diff, paste("ff_non_comp_diff_11_fluo_", params$experience, "_", params$beads, ".fcs", sep = ""))
+```
+
+Visulization
+```{r}
+library(ggcyto)
+autoplot(ff_comp, "CD56_APCH7", "CD3_PE")
+```
+
+```{r}
+autoplot(ff_uncomp, "CD56_APCH7", "CD3_PE")
+```
+
+
+
+## Saving the labels 
+```{r}
+saveRDS(data_comp[, "label"], paste("labels",  params$experience, sep = "_"))
+saveRDS(data_comp_eq[, "label"], paste("labels_eq",  params$experience,  sep = "_"))
+saveRDS(data_comp_diff[, "label"], paste("labels_diff",  params$experience,  sep = "_"))
+```
+
+
+
+
