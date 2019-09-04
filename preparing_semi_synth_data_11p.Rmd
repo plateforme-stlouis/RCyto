@@ -1,5 +1,5 @@
 ---
-title: "Preparing real data: 11 parameters"
+title: "Preparing semi-synthetic data: 11 parameters"
 output: html_document
 params:
   experience: "20190716_billes"
