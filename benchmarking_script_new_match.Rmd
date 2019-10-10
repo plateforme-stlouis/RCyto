@@ -71,7 +71,7 @@ kable(table_frqs)
 
 # Number of clusters (For `FlowSOM`)
 ```{r clusters}
-clusters <- c(eval(parse(text = paste("c(", params$clusters, ")", sep = ""))))
+( clusters <- c(eval(parse(text = paste("c(", params$clusters, ")", sep = "")))) )
 ```
 
 # Functions
@@ -271,7 +271,7 @@ dev.off()
 
 # Clustering on all dimensions
 ## `FlowSOM`
-```{r flowsom, cache = FALSE}
+```{r flowsom}
 # Parameters
 method <- "FlowSOM"
 
@@ -319,7 +319,7 @@ for(i in 1:length(clusters)){
 ```
 
 ## RphenoGraph
-```{r phenograph}
+```{r phenograph clustering}
 method <- "PhenoGraph"
 
 # clustering
@@ -328,10 +328,14 @@ pred <- Rphenograph(ff@exprs) # default k = 30 nearest neighbours
 ptm <- proc.time() - ptm
 
 clustering <- pred$membership
+```
 
+```{r phenograph matching}
 # MATCHING LABELS AND PREDICTIONS
 matched <- matching(clustering, labels)
+```
 
+```{r phenograph performance}
 # COMPUTING THE CONFUSION MATRIX AND OTHER PERFORMANCE MEASUREMENTS
 cm <- confusionMatrix(data = matched$clusters[labels != "outliers"],
                       reference = labels[labels != "outliers"])
@@ -344,7 +348,7 @@ cm_merged <- confusionMatrix(
 mf1 <- mean_f1(cm, cm_merged, matched$merged_labels, matched$count_merged_pops)
 ```
 
-```{r phenograph results}
+```{r phenograph results, cache = FALSE}
 summ[nrow(summ)+1,c(1,3)] <- c(params$file, method)
 summ[nrow(summ),-c(1,3)] <- c(nrow(ff@exprs), length(table(clustering)),
                               matched$partitions,
@@ -364,7 +368,7 @@ print(cm_merged$table)
 ```
 
 ## flowMeans
-```{r flowmeans}
+```{r flowmeans clustering}
 method <- "flowMeans"
 
 # clustering
@@ -373,10 +377,14 @@ pred <- flowMeans(ff@exprs, MaxN = n_pops )
 ptm <- proc.time() - ptm
 
 clustering <- pred@Labels[[1]]
+```
 
+```{r flowmeans matching}
 # MATCHING LABELS AND PREDICTIONS
 matched <- matching(clustering, labels)
+```
 
+```{r flowmeans performance}
 # COMPUTING THE CONFUSION MATRIX AND OTHER PERFORMANCE MEASUREMENTS
 cm <- confusionMatrix(data = matched$clusters[labels != "outliers"],
                       reference = labels[labels != "outliers"])
@@ -389,7 +397,7 @@ cm_merged <- confusionMatrix(
 mf1 <- mean_f1(cm, cm_merged, matched$merged_labels, matched$count_merged_pops)
 ```
 
-```{r flowmeans results}
+```{r flowmeans results, cache = FALSE}
 summ[nrow(summ)+1,c(1,3)] <- c(params$file, method)
 summ[nrow(summ),-c(1,3)] <- c(nrow(ff@exprs), length(table(clustering)),
                               matched$partitions,
@@ -408,7 +416,7 @@ print(cm_merged$table)
 ```
 
 ## flowPeaks
-```{r flowpeaks}
+```{r flowpeaks clustering}
 method <- "flowPeaks"
 
 # clustering
@@ -417,10 +425,14 @@ pred <- flowPeaks(ff@exprs)
 ptm <- proc.time() - ptm
 
 clustering <- pred$peaks.cluster
+```
 
+```{r flowpeaks matching}
 # MATCHING LABELS AND PREDICTIONS
 matched <- matching(clustering, labels)
+```
 
+```{r flowpeaks performance}
 # COMPUTING THE CONFUSION MATRIX AND OTHER PERFORMANCE MEASUREMENTS
 cm <- confusionMatrix(data = matched$clusters[labels != "outliers"],
                       reference = labels[labels != "outliers"])
@@ -433,7 +445,7 @@ cm_merged <- confusionMatrix(
 mf1 <- mean_f1(cm, cm_merged, matched$merged_labels, matched$count_merged_pops)
 ```
 
-```{r flowpeaks results}
+```{r flowpeaks results, cache = FALSE}
 summ[nrow(summ)+1, c(1,3)] <- c(params$file, method)
 summ[nrow(summ), -c(1,3)] <- c(nrow(ff@exprs), length(table(clustering)),
                               matched$partitions,
@@ -453,7 +465,7 @@ print(cm_merged$table)
 ```
 
 ## DEPECHE
-```{r depeche}
+```{r depeche clustering}
 method <- "DEPECHE"
 
 # clustering
@@ -462,10 +474,14 @@ pred <-  depeche(ff@exprs, createOutput = F)
 ptm <- proc.time() - ptm
 
 clustering <- pred$clusterVector
+```
 
+```{r depeche matching}
 # MATCHING LABELS AND PREDICTIONS
 matched <- matching(clustering, labels)
+```
 
+```{r depeche performance}
 # COMPUTING THE CONFUSION MATRIX AND OTHER PERFORMANCE MEASUREMENTS
 cm <- confusionMatrix(data = matched$clusters[labels != "outliers"],
                       reference = labels[labels != "outliers"])
@@ -478,7 +494,7 @@ cm_merged <- confusionMatrix(
 mf1 <- mean_f1(cm, cm_merged, matched$merged_labels, matched$count_merged_pops)
 ```
 
-```{r depeche results}
+```{r depeche results, cache = FALSE}
 summ[nrow(summ)+1, c(1,3)] <- c(params$file, method)
 summ[nrow(summ), -c(1,3)] <- c(nrow(ff@exprs), length(table(clustering)),
                               matched$partitions,
@@ -499,7 +515,7 @@ print(cm_merged$table)
 
 # Clustering on t-SNE-reduced data (2D)
 ## RphenoGraph
-```{r tsne phenograph}
+```{r tsne phenograph clustering}
 method <- "t-SNE + PhenoGraph"
 
 # clustering
@@ -508,10 +524,14 @@ pred <- Rphenograph(tsne_red) # default k = 30 nearest neighbours
 ptm <- proc.time() - ptm
 
 clustering <- pred$membership
+```
 
+```{r tsne phenograph matching}
 # MATCHING LABELS AND PREDICTIONS
 matched <- matching(clustering, labels)
+```
 
+```{r tsne phenograph performance}
 # COMPUTING THE CONFUSION MATRIX AND OTHER PERFORMANCE MEASUREMENTS
 cm <- confusionMatrix(data = matched$clusters[labels != "outliers"],
                       reference = labels[labels != "outliers"])
@@ -524,7 +544,7 @@ cm_merged <- confusionMatrix(
 mf1 <- mean_f1(cm, cm_merged, matched$merged_labels, matched$count_merged_pops)
 ```
 
-```{r tsne phenograph results}
+```{r tsne phenograph results, cache = FALSE}
 summ[nrow(summ)+1, c(1,3)] <- c(params$file, method)
 summ[nrow(summ), -c(1,3)] <- c(nrow(ff@exprs), length(table(clustering)),
                                matched$partitions,
@@ -544,7 +564,7 @@ print(cm_merged$table)
 ```
 
 ## flowMeans
-```{r tsne flowmeans}
+```{r tsne flowmeans clustering}
 method <- "t-SNE + flowMeans"
 
 # clustering
@@ -553,10 +573,14 @@ pred <- flowMeans(tsne_red, MaxN = n_pops )
 ptm <- proc.time() - ptm
 
 clustering <- pred@Labels[[1]]
+```
 
+```{r tsne flowmeans matching}
 # MATCHING LABELS AND PREDICTIONS
 matched <- matching(clustering, labels)
+```
 
+```{r tsne flowmeans performance}
 # COMPUTING THE CONFUSION MATRIX AND OTHER PERFORMANCE MEASUREMENTS
 cm <- confusionMatrix(data = matched$clusters[labels != "outliers"],
                       reference = labels[labels != "outliers"])
@@ -569,7 +593,7 @@ cm_merged <- confusionMatrix(
 mf1 <- mean_f1(cm, cm_merged, matched$merged_labels, matched$count_merged_pops)
 ```
 
-```{r tsne flowmeans results}
+```{r tsne flowmeans results, cache = FALSE}
 summ[nrow(summ)+1, c(1,3)] <- c(params$file, method)
 summ[nrow(summ), -c(1,3)] <- c(nrow(ff@exprs), length(table(clustering)),
                                matched$partitions,
@@ -590,7 +614,7 @@ print(cm_merged$table)
 ```
 
 ## flowPeaks
-```{r tsne flowpeaks}
+```{r tsne flowpeaks clustering}
 method <- "t-SNE + flowPeaks"
 
 # clustering
@@ -599,10 +623,14 @@ pred <- flowPeaks(tsne_red)
 ptm <- proc.time() - ptm
 
 clustering <- pred$peaks.cluster
+```
 
+```{r tsne flowpeaks matching}
 # MATCHING LABELS AND PREDICTIONS
 matched <- matching(clustering, labels)
+```
 
+```{r tsne flowpeaks performance}
 # COMPUTING THE CONFUSION MATRIX AND OTHER PERFORMANCE MEASUREMENTS
 cm <- confusionMatrix(data = matched$clusters[labels != "outliers"],
                       reference = labels[labels != "outliers"])
@@ -615,7 +643,7 @@ cm_merged <- confusionMatrix(
 mf1 <- mean_f1(cm, cm_merged, matched$merged_labels, matched$count_merged_pops)
 ```
 
-```{r tsne flowpeaks results}
+```{r tsne flowpeaks results, cache = FALSE}
 summ[nrow(summ)+1, c(1,3)] <- c(params$file, method)
 summ[nrow(summ), -c(1,3)] <- c(nrow(ff@exprs), length(table(clustering)),
                                matched$partitions,
@@ -635,7 +663,7 @@ print(cm_merged$table)
 ```
 
 ## DEPECHE
-```{r tsne depeche}
+```{r tsne depeche clustering}
 method <- "t-SNE + DEPECHE"
 
 # clustering
@@ -644,10 +672,14 @@ pred <-  depeche(tsne_red, createOutput = F)
 ptm <- proc.time() - ptm
 
 clustering <- pred$clusterVector
+```
 
+```{r tsne depeche matching}
 # MATCHING LABELS AND PREDICTIONS
 matched <- matching(clustering, labels)
+```
 
+```{r tsne depeche performance}
 # COMPUTING THE CONFUSION MATRIX AND OTHER PERFORMANCE MEASUREMENTS
 cm <- confusionMatrix(data = matched$clusters[labels != "outliers"],
                       reference = labels[labels != "outliers"])
@@ -660,7 +692,7 @@ cm_merged <- confusionMatrix(
 mf1 <- mean_f1(cm, cm_merged, matched$merged_labels, matched$count_merged_pops)
 ```
 
-```{r tsne depeche results}
+```{r tsne depeche results, cache = FALSE}
 summ[nrow(summ)+1, c(1,3)] <- c(params$file, method)
 summ[nrow(summ), -c(1,3)] <- c(nrow(ff@exprs), length(table(clustering)),
                                matched$partitions,
@@ -680,17 +712,21 @@ print(cm_merged$table)
 ```
 
 ## ClusterX
-```{r tsne clusterx}
+```{r tsne clusterx clustering}
 method <- "t-SNE + ClusterX"
 
 # clustering
 ptm <- proc.time() # measuring CPU time
 clustering <- cytof_cluster(tsne_red, method = "ClusterX")
 ptm <- proc.time() - ptm
+```
 
+```{r tsne clusterx matching}
 # MATCHING LABELS AND PREDICTIONS
 matched <- matching(clustering, labels)
+```
 
+```{r tsne clusterx performance}
 # COMPUTING THE CONFUSION MATRIX AND OTHER PERFORMANCE MEASUREMENTS
 cm <- confusionMatrix(data = matched$clusters[labels != "outliers"],
                       reference = labels[labels != "outliers"])
@@ -703,7 +739,7 @@ cm_merged <- confusionMatrix(
 mf1 <- mean_f1(cm, cm_merged, matched$merged_labels, matched$count_merged_pops)
 ```
 
-```{r tsne clusterx results}
+```{r tsne clusterx results, cache = FALSE}
 summ[nrow(summ)+1, c(1,3)] <- c(params$file, method)
 summ[nrow(summ), -c(1,3)] <- c(nrow(ff@exprs), length(table(clustering)),
                          matched$partitions,
@@ -724,7 +760,7 @@ print(cm_merged$table)
 
 # Clustering on UMAP-reduced data (2D)
 ## RphenoGraph
-```{r umap phenograph}
+```{r umap phenograph clustering}
 method <- "UMAP + PhenoGraph"
 
 # clustering
@@ -733,10 +769,14 @@ pred <- Rphenograph(umap_red$layout) # default k = 30 nearest neighbours
 ptm <- proc.time() - ptm
 
 clustering <- pred$membership
+```
 
+```{r umap phenograph matching}
 # MATCHING LABELS AND PREDICTIONS
 matched <- matching(clustering, labels)
+```
 
+```{r umap phenograph performance}
 # COMPUTING THE CONFUSION MATRIX AND OTHER PERFORMANCE MEASUREMENTS
 cm <- confusionMatrix(data = matched$clusters[labels != "outliers"],
                       reference = labels[labels != "outliers"])
@@ -749,7 +789,7 @@ cm_merged <- confusionMatrix(
 mf1 <- mean_f1(cm, cm_merged, matched$merged_labels, matched$count_merged_pops)
 ```
 
-```{r umap phenograph results}
+```{r umap phenograph results, cache = FALSE}
 summ[nrow(summ)+1, c(1,3)] <- c(params$file, method)
 summ[nrow(summ), -c(1,3)] <- c(nrow(ff@exprs), length(table(clustering)),
                          matched$partitions,
@@ -769,7 +809,7 @@ print(cm_merged$table)
 ```
 
 ## flowMeans
-```{r umap flowmeans}
+```{r umap flowmeans clustering}
 method <- "UMAP + flowMeans"
 
 # clustering
@@ -778,10 +818,14 @@ pred <- flowMeans(umap_red$layout, MaxN = n_pops )
 ptm <- proc.time() - ptm
 
 clustering <- pred@Labels[[1]]
+```
 
+```{r umap flowmeans matching}
 # MATCHING LABELS AND PREDICTIONS
 matched <- matching(clustering, labels)
+```
 
+```{r umap flowmeans performance}
 # COMPUTING THE CONFUSION MATRIX AND OTHER PERFORMANCE MEASUREMENTS
 cm <- confusionMatrix(data = matched$clusters[labels != "outliers"],
                       reference = labels[labels != "outliers"])
@@ -794,7 +838,7 @@ cm_merged <- confusionMatrix(
 mf1 <- mean_f1(cm, cm_merged, matched$merged_labels, matched$count_merged_pops)
 ```
 
-```{r umap flowmeans results}
+```{r umap flowmeans results, cache = FALSE}
 summ[nrow(summ)+1, c(1,3)] <- c(params$file, method)
 summ[nrow(summ), -c(1,3)] <- c(nrow(ff@exprs), length(table(clustering)),
                          matched$partitions,
@@ -814,7 +858,7 @@ print(cm_merged$table)
 ```
 
 ## flowPeaks
-```{r umap flowpeaks}
+```{r umap flowpeaks clustering}
 method <- "UMAP + flowPeaks"
 
 # clustering
@@ -823,10 +867,14 @@ pred <- flowPeaks(umap_red$layout)
 ptm <- proc.time() - ptm
 
 clustering <- pred$peaks.cluster
+```
 
+```{r umap flowpeaks matching}
 # MATCHING LABELS AND PREDICTIONS
 matched <- matching(clustering, labels)
+```
 
+```{r umap flowpeaks performance}
 # COMPUTING THE CONFUSION MATRIX AND OTHER PERFORMANCE MEASUREMENTS
 cm <- confusionMatrix(data = matched$clusters[labels != "outliers"],
                       reference = labels[labels != "outliers"])
@@ -839,7 +887,7 @@ cm_merged <- confusionMatrix(
 mf1 <- mean_f1(cm, cm_merged, matched$merged_labels, matched$count_merged_pops)
 ```
 
-```{r umap flowpeaks results}
+```{r umap flowpeaks results, cache = FALSE}
 summ[nrow(summ)+1, c(1,3)] <- c(params$file, method)
 summ[nrow(summ), -c(1,3)] <- c(nrow(ff@exprs), length(table(clustering)),
                          matched$partitions,
@@ -859,7 +907,7 @@ print(cm_merged$table)
 ```
 
 ## DEPECHE
-```{r umap depeche}
+```{r umap depeche clustering}
 method <- "UMAP + DEPECHE"
 
 # clustering
@@ -868,10 +916,14 @@ pred <-  depeche(umap_red$layout, createOutput = F)
 ptm <- proc.time() - ptm
 
 clustering <- pred$clusterVector
+```
 
+```{r umap depeche matching}
 # MATCHING LABELS AND PREDICTIONS
 matched <- matching(clustering, labels)
+```
 
+```{r umap depeche performance}
 # COMPUTING THE CONFUSION MATRIX AND OTHER PERFORMANCE MEASUREMENTS
 cm <- confusionMatrix(data = matched$clusters[labels != "outliers"],
                       reference = labels[labels != "outliers"])
@@ -884,7 +936,7 @@ cm_merged <- confusionMatrix(
 mf1 <- mean_f1(cm, cm_merged, matched$merged_labels, matched$count_merged_pops)
 ```
 
-```{r umap depeche results}
+```{r umap depeche results, cache = FALSE}
 summ[nrow(summ)+1, c(1,3)] <- c(params$file, method)
 summ[nrow(summ), -c(1,3)]<- c(nrow(ff@exprs), length(table(clustering)),
                          matched$partitions,
@@ -904,17 +956,21 @@ print(cm_merged$table)
 ```
 
 ## ClusterX
-```{r umap clusterx}
+```{r umap clusterx clustering}
 method <- "UMAP + ClusterX"
 
 # clustering
 ptm <- proc.time() # measuring CPU time
 clustering <- cytof_cluster(umap_red$layout, method = "ClusterX")
 ptm <- proc.time() - ptm
+```
 
+```{r umap clusterx matching}
 # MATCHING LABELS AND PREDICTIONS
 matched <- matching(clustering, labels)
+```
 
+```{r umap clusterx performance}
 # COMPUTING THE CONFUSION MATRIX AND OTHER PERFORMANCE MEASUREMENTS
 cm <- confusionMatrix(data = matched$clusters[labels != "outliers"],
                       reference = labels[labels != "outliers"])
@@ -927,7 +983,7 @@ cm_merged <- confusionMatrix(
 mf1 <- mean_f1(cm, cm_merged, matched$merged_labels, matched$count_merged_pops)
 ```
 
-```{r umap clusterx results}
+```{r umap clusterx results, cache = FALSE}
 summ[nrow(summ)+1, c(1,3)] <- c(params$file, method)
 summ[nrow(summ), -c(1,3)]<- c(nrow(ff@exprs), length(table(clustering)),
                          matched$partitions,
