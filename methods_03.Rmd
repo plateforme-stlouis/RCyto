@@ -1,0 +1,584 @@
+---
+title: "Matching procedure and measures of performance"
+subtitle: "methods_03"
+author: "Anna Guadall"
+date: "`r Sys.Date()`"
+output:
+  pdf_document:
+    toc: yes
+  html_document:
+    code_folding: show
+    highlight: tango
+    number_sections: no
+    theme: united
+    toc: yes
+    toc_float: yes
+params:
+  file: "/Users/anna/Documents/paper_cyto/scripts_and_files/files/beads_18_comp_50/ff.fcs"
+  labels: "/Users/anna/Documents/paper_cyto/scripts_and_files/files/beads_18_comp_50/labels"
+  outliers:
+    label: '0: no outiliers, 1: outliers'
+    value: 0
+  diff: 
+    labels: minimum difference among F1 scores that are not equivalent
+    value: 0.05
+urlcolor: blue
+bibliography: ../biblio/cyto.bib
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = T,  cache = T)
+```
+
+\newpage
+
+```{r libraries, message=FALSE}
+library(FlowSOM)
+library(caret)
+library(cytofkit) # charges plyr
+library(knitr)
+library(pander)
+library(flowMeans)
+library(umap)
+```
+
+# Reading the data
+```{r}
+params
+```
+
+Import the `fcs` file and the label list.
+```{r}
+# import the fcs file
+ff <- flowCore::read.FCS(params$file)
+
+# Import the labels
+labels <- readRDS(params$labels) # "labels" has c levels
+```
+
+Number of populations:  
+The `parasms$outliers` parameter has to be set to `0` if there are no outliers (synthetic or semisynthetic data). For real data having outliers, the parameter must be set to `1`.
+```{r}
+n_pops <- length(levels(labels)) - params$outliers
+```
+
+Computing  populations' frequencies:
+```{r}
+(pop_freq <- prop.table(table(labels)))
+cbind(count(labels), round(pop_freq, 2))
+```
+\  
+
+**Info:**  
+
+File: ``r params$file``   
+``r nrow(ff@exprs)`` cells.  
+`r n_pops` populations.  
+`r ncol(ff@exprs)` parameters.  
+
+# Clustering
+```{r}
+fs <- FlowSOM(ff, compensate = F,transform = F, scale = F,
+                colsToUse = colnames(ff@exprs), nClus = 10, seed = 42)
+clustering <- fs$metaclustering[fs$FlowSOM$map$mapping[,1]]
+```
+
+
+# F1 SCORE
+THE MATCHING PROCEDURE WILL BE BASED ON THE F1 SCORE.  
+Clusters and populations with a SIMILAR MAXIMUM F1 score are MERGED.  
+
+The **`label`** list indicates the reference categories for each example (real or sybthetic cell, bead). We will call $L$ the correct set of reference labels:
+
+$$L=\{L_1, L_2, \dots, L_n\}$$
+
+The **`clustering`** list stores the clustering results:  
+
+$$C=\{C_1, C_2, \dots, C_m\}$$
+
+## Contingency matrix
+The **contingency matrix** includes the number of matches between combinations of $C$ and $L$:
+
+$$M=[a_{ij}]$$
+where $i \in [1,m]$ and $j \in [1,n].$
+
+```{r}
+(c <- table(clustering, labels)) 
+```
+
+## Recall matrix
+**Recall (_sensitivity_ or _true positive rate_):** Proportion of truly positive examples that are correctly classified. 
+
+$$Recall=\frac{TP}{TP+FN}$$
+where:
+
+$TP$: True positives  
+$FN$: False negatives  
+$TP+FN=$ Total number of truly positives.
+
+$$Recall(C_i,L_j)=\frac{a_{ij}}{|L_j|}$$
+
+(See [@Aghaeepour_critical_2013], page 239: I have inversed the terms $i$ and $j$.)
+
+The **recall matrix** can be computed usind the `prop.table()` base function indicating columns (index `2`) as margins:
+```{r}
+r <- prop.table(c, 2)          
+round(r, 3)
+```
+
+## Precision matrix
+**Precision (_positive predictive value_):** Proportion of positive examples that are truly positive. Number of cells correctly assigned to a label divided by the total of cells assigned to that label.
+
+$$Precision=\frac{TP}{TP+FP}$$
+where:
+
+$FP$: False positives  
+$TP+FP=$ Predicted positives
+
+$$Precision(C_i,L_j)=\frac{a_{ij}}{|C_i|}$$
+
+```{r}
+p <- prop.table(c, 1)          
+round(p, 3)
+```
+
+## F1 matrix
+The **$F_1$ score** is a widely used performance measure that combines _precision_ and _recall_ using the harmonic mean. The F1 score ranges from 0 (worst performance) to 1 (best _precision_ and _recall_ scores).
+
+$$F_1=\frac{2\times precision\times recall}{precision~+~recall}=\frac{2\times TP}{2\times TP~+~FP~+~FN}$$
+
+Computing the F1 matrix:
+```{r}
+f <- 2 * p * r / (p + r)       # F1 matrix
+f[is.na(f)] <-  0              # replacing NAs by zeros
+round(f, 3)
+```
+
+# MATCHING PROCEDURE
+## Preliminaries
+### Cell population (columns) with a higher score F1 for each cluster (rows)
+```{r}
+m <- apply(f, 1, function(x){which.max(x)})
+(m <- as.list(m))
+```
+
+In this example, the cluster 1 achieves a maximum F1 score when it is matched to the population 19. 
+
+### Normalize column values (col-norm-F1)
+For each column (population), F1 values will range [0,1].
+```{r}
+normalize <- function(x) { return ((x - min(x)) / (max(x) - min(x))) }
+col_norm <- apply(f, 2, normalize) 
+round(col_norm, 2)
+```
+
+### Col-norm-F1 row equivalent maximums
+The equivalence is given by a threshold defined in `parameters`:
+```{r}
+params$diff
+```
+
+Looking for those COLUMN MAXIMUMS that differ at least `r params$diff` from the rest in the column normalized results.
+```{r}
+col_m <- apply( col_norm, 2, function(x){ which(max(x) - x < params$diff & x != 0) }  )
+( col_m <- as.list(col_m) )
+```
+
+
+In this example:  
+* The maximum F1 score for population 1 is achieved when this population is matched to cluster 10.
+* Many populations achieve their maximum F1 score when they are matched to cluster 2.
+
+### Normalize row values (row-norm-F1)
+For each row (cluster), F1 values will range [0,1].
+```{r}
+normalize <- function(x) { return ((x - min(x)) / (max(x) - min(x))) }
+row_norm <- apply(f, 1, normalize) # why is the result transposed?
+row_norm <- t(row_norm)
+round(row_norm, 2)
+```
+
+### Row-norm-F1 row equivalent maximums
+Looking for those ROW MAXIMUMS that differ at least `r params$diff` from the rest in the row normalized results.
+```{r}
+row_m <- apply( row_norm, 1, function(x){ which(max(x) - x < params$diff & x != 0) }  )
+( row_m <- as.list(row_m) )
+```
+
+In this example, the normalized F1 scores obatined for cluster 1 matching either to population 16 or 19 are considered similar (threshold settled at `r params$diff`). (Original F1 scores are 0.545 and 0.553, respectively).
+
+## MERGING POPULATIONS (IN CASE ONE CLUSTER MATCHES MANY POPULATIONS)
+### Step by step
+```{r}
+levels(labels)
+```
+
+A merged_labels list is created with the initial labels values
+```{r}
+merged_labels_variable <- as.character(labels)
+```
+
+Initially, all labels are formed of "one merged label". Values are settled to 1.
+```{r}
+count_merged_pops_variable <- rep(1, length(labels))
+```
+
+The loop will iterate over all the examples:
+```{r}
+length(labels)
+```
+
+For each example, a nested loop will iterate over the elements of the list of colum equivalent maximum F1 scores.
+```{r}
+unlist(col_m)
+```
+
+**IF** the label assigned to the example (ground truth)...
+```{r}
+i <- 1
+labels[i]
+```
+
+...**IS INCLUDED IN**... 
+```{r}
+# j takes value...
+( j <- unlist(col_m)[19] )
+```
+
+...the name of the element of the equivalent row normalized maximum F1 score list...
+```{r}
+# element(s) of the row maximum list for the population included in the variable j
+row_m[[j]]
+```
+
+```{r}
+# name(s) of this element
+names(row_m[[j]])
+```
+
+```{r}
+# In case there are several elements, they are extracted with `unlist()`
+unlist(names(row_m[[j]]))
+```
+
+...**THEN, IF** the name of the element of the equivalent row normalized maximum F1 score list (or the name of the first element, if they are several equivalent maximums)...
+```{r}
+unlist(names(row_m[[j]]))[1]
+```
+
+...**EQUALS**  the name of the first col maximum (in case there are several) for that population...
+```{r}
+# col maximum(s) for the first row maximum
+col_m[ unlist(names(row_m[[j]]))[1] ]
+```
+
+```{r}
+# NAME(S) of the col maximum(s) for the first row maximum
+names( col_m[ unlist(names(row_m[[j]]))[1] ] ) 
+```
+
+(Otherwise said, if the row maximum is also a column maximum)  
+(That is, if the maximum F1 score computed for a cluster (row maximum) is also the maximum F1 score computed for the population matching that cluster (column maximum))
+
+...**THEN (1)**, the name of the merged labels for this example (that for instance took the name of the original label)...
+```{r}
+merged_labels_variable[i]
+```
+
+will be composed of the names of all the equivalent row maximums (if they are several). Otherwise, it will simply take the name of the unique row maximum:
+
+```{r}
+paste( unlist( names(row_m[[j]]) ), collapse = "-" )
+```
+
+(Notice that, in order to formulate the condition, we just need to take the first element of the list, as then, if there are several elements, they will all be used to compose the name of the merged population).
+
+...**THEN (2)**, the counter for the number of populations that have been merged (if there has been merging) and assigned to each example, that for instance is settled to 1...
+```{r}
+count_merged_pops_variable[i]
+```
+
+...will take the value of the number of populations that have been merged (if there has been merging). Otherwise, it will take value 1.
+```{r}
+length(unlist( names(row_m[[j]]) ))
+```
+               
+### Looping
+```{r}
+merged_labels <- as.character(labels)
+
+count_merged_pops <- rep(1, length(labels))
+
+for(i in 1:length(labels)){
+  for(j in unlist(col_m)){ 
+    if(labels[i] %in% unlist(names(row_m[[j]]))){
+      if(unlist(names(row_m[[j]]))[1] == names(col_m[unlist(names(row_m[[j]]))[1]])){
+        merged_labels[i] <- paste( unlist( names(row_m[[j]]) ), collapse = "-" )
+        count_merged_pops[i] <- length(unlist( names(row_m[[j]]) ))
+      }
+    }
+  }
+}
+```
+
+```{r, echo = F}
+cat("Clusters\n")
+table(clustering)
+cat("\nOriginal labels\n")
+table(labels)
+cat("\n")
+table(merged_labels)
+cat("\n")
+table(merged_labels, count_merged_pops)
+```
+
+```{r}
+# verifications
+length(labels)
+table(length(labels) == sum(table(clustering)))
+table(sum(table(clustering)) == sum(table(merged_labels)))
+```
+
+This process leads to this new contingency matrix:
+```{r}
+table(clustering, merged_labels)
+```
+
+Notice that with a less restrictive trheshold, some populations assigned to cluster 2 could have been merged.
+
+## MATCHING CLUSTERS TO LABELS
+The matching process includes the possibility to merge matchings.  
+Two lists will be generated:  
+
+* List for the clusters with no merging (to be compared to the label list)
+* List for the clusters merged (to be compared to the merged_label list)
+
+### Step by step
+Empty list are created for both types of list:
+
+```{r}
+matched_merged_clusters <- rep("NA", length(clustering))
+matched_clusters <- rep("NA", length(clustering))
+```
+
+A first loop iterates over all the examples
+```{r}
+length(clustering)
+```
+
+For each example, a nested loop will iterate over the elements of the list of absolute row maximum F1 scores.
+```{r}
+length(row_m)
+```
+
+**IF** the cluster assigned to the example...
+```{r}
+i <- 1
+clustering[i]
+```
+
+...**EQUALS**...
+```{r}
+names(row_m)
+```
+
+...the name of a row maximum...
+```{r}
+j <- 1
+names(row_m)[j]
+```
+
+...**THEN**, it will be matched...
+```{r}
+levels(labels)
+```
+
+...
+```{r}
+m[[j]]
+```
+
+...to the population corresponding to the  (first) absolute row maximum. The mathcing will be stored in the `matched_clusters` list.
+```{r}
+levels(labels)[ m[[j]] ]
+```
+
+...**ADDITIONALLY**,  
+The cluster assigned to the example...
+```{r}
+clustering[i]
+```
+
+...will be matched to the merged populations (if there has been merging) or to the corresponding population. This matching will be stored in the `matched_merged_clusters` list.
+```{r}
+paste(levels(labels)[as.numeric(unlist(row_m[[j]]))], collapse = "-")
+```
+
+### Looping
+```{r}
+# Empty list 
+matched_merged_clusters <- rep("NA", length(clustering))
+matched_clusters <- rep("NA", length(clustering))
+
+# Replacing the numbers of the clusters by the names of the cell types:
+for(i in 1:length(clustering)){
+  for(j in 1:length(row_m)){ 
+    if(clustering[i] == names(row_m)[j]){ # if  a cluster number equals a row maximum...
+      # ... give it the name of the absolute row maximum
+      matched_clusters[i] <- levels(labels)[m[[j]]]
+      # ... give it the name of the corresponding populations,
+      # merging the name to the other equivalent row maximums, if there are
+      matched_merged_clusters[i] <- paste(levels(labels)[as.numeric(unlist(row_m[[j]]))], 
+                                          collapse = "-")
+    }
+  }
+}
+
+cat("Original clusters\n")
+table(clustering)
+cat("\n")
+table(matched_clusters)
+cat("\n")
+table(matched_merged_clusters)
+```
+
+Number of PARTTIONS (matched clusters): 
+```{r}
+( partitions <- length(table(matched_clusters)) )
+```
+
+# MEASURES OF PERFORMANCE
+## CONFUSION MATRICES
+* Matched clusters _vs_ labels
+* Matched MERGED clusters _vs_ MERGED labels
+
+The confusion matrices and other performance measurements are computed using the `confusionMatrix()` function of the `caret` package.
+```{r}
+# Factorize recntly obtained lists 
+merged_labels <- as.factor(merged_labels)
+matched_merged_clusters <- factor(matched_merged_clusters, levels = levels(merged_labels)) 
+matched_clusters <- factor(matched_clusters, levels = levels(labels)) 
+# same level order than merged_labels
+# adds labels that have not been predicted
+
+# COMPUTING THE CONFUSION MATRIX AND OTHER PERFORMANCE MEASUREMENTS
+cm <- confusionMatrix(data = matched_clusters[labels != "outliers"],
+                        reference = labels[labels != "outliers"])
+
+cm_merged <- confusionMatrix(data = matched_merged_clusters[labels != "outliers"],
+                        reference = merged_labels[labels != "outliers"])
+
+cat("Without merging\n")
+cm$table
+cat("\nWith MERGING of populations\n")
+cm_merged$table
+```
+
+## F1 scores
+The F1 scores can be extracted from the elements produced with  the `confusionMatrix()` function of the `caret` package.
+```{r, echo = F}
+cat("Without merging\n")
+cm$byClass[,"F1"]
+cat("\nWith MERGING of populations\n")
+cm_merged$byClass[,"F1"]
+```
+
+### Mean F1 scores: ALL, not merged
+$$\bar x=\frac{\sum_{i=1}^n F_i}{n}$$
+
+```{r}
+# Extracting the F1 scores
+f1_list <- cm$byClass[,"F1"]
+
+# Replacing NAs by zeros
+f1_zeros <- f1_list
+f1_zeros <- ifelse(is.na(f1_list), 0, f1_list)
+
+# Computing the mean
+mf1 <- mean(f1_zeros)
+cat("Mean\t\t", mf1, "\n")
+```
+
+### Mean F1 scores: ALL, not merged, WEIGHTED
+$$\bar x=\frac{\sum_{i=1}^n w_iF_i}{\sum_{i=1}^n w_i}$$
+Or, using, normalized weights:
+
+$$\bar x=\sum_{i=1}^n w'_iF_i$$, where $$\sum_{i=1}^n w'_i=1$$
+
+Weigths:
+```{r}
+table(labels)
+```
+
+Normalized weihgts:
+```{r}
+pop_freq <- prop.table(table(labels))
+prop.table(pop_freq)
+```
+
+$\sum_{i=1}^n w'_i=1$
+```{r}
+sum(pop_freq)
+```
+
+```{r}
+mf1_w <- t(pop_freq) %*% f1_zeros # WEIGHTED MEAN 
+
+cat("Weighted mean\t", mf1_w)
+```
+
+### Mean F1 scores: ALL, not merged, INSVERSED WEIGHTS
+$$\bar x=\frac{\sum_{i=1}^n \frac{1}{w_i}F_i}{\sum_{i=1}^n \frac{1}{w_i}}$$
+Inversed weigths:
+```{r}
+1/table(labels)
+```
+
+Normalized inversed weihgts:
+```{r}
+( inv_freq <- prop.table(1/table(labels)) )
+```
+
+```{r}
+mf1_i_w <- t(inv_freq) %*% f1_zeros # WEIGHTED MEAN 
+
+cat("Inversed weighted mean\t", mf1_i_w)
+```
+
+### Mean F1 scores: ALL, MERGED
+```{r}
+merged_f1_list <- cm_merged$byClass[,"F1"]
+merged_f1_zeros <- merged_f1_list
+merged_f1_zeros <- ifelse(is.na(merged_f1_list), 0, merged_f1_list)
+mf1_m <- mean(merged_f1_zeros)
+
+cat("Mean\t\t", mf1_m, "\n")
+```
+
+### Mean F1 scores: ALL, MERGED, CORRECTED
+$$\bar x=\frac{\sum_{i=1}^n \frac{F_i~merged}{number~of~merged~populations}}{n}$$
+```{r}
+merged_table <- table(merged_labels, count_merged_pops)
+( merged_table <- cbind(merged_table, correction = 0) )
+```
+
+```{r}
+for(i in 1:nrow(merged_table)){
+  for(j in 1:(ncol(merged_table)-1)){
+    if(merged_table[i, j] != 0){
+      merged_table[i, "correction"] <- merged_f1_zeros[i]/as.numeric(colnames(merged_table)[j])
+    }
+  }
+}
+
+merged_table
+```
+
+```{r}
+mf1_m_all_corrected <- mean(merged_table[,"correction"])
+cat("Corrected mean\t", mf1_m_all_corrected)
+```
+
+# References
+
+
