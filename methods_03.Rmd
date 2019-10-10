@@ -126,6 +126,8 @@ r <- prop.table(c, 2)
 round(r, 3)
 ```
 
+Using the `prop.table()` function with the indicating `margin=2`, each element of the matrix is divided by the sum of the elemnents of its column, which is the sum of truly positives (TP+FN).
+
 ## Precision matrix
 **Precision (_positive predictive value_):** Proportion of positive examples that are truly positive. Number of cells correctly assigned to a label divided by the total of cells assigned to that label.
 
@@ -141,6 +143,8 @@ $$Precision(C_i,L_j)=\frac{a_{ij}}{|C_i|}$$
 p <- prop.table(c, 1)          
 round(p, 3)
 ```
+
+Using the `prop.table()` function with the indicating `margin=1`, each element of the matrix is divided by the sum of the elemnents of its row, which is the sum of total of examples assigned to that cluster (TP+FP).
 
 ## F1 matrix
 The **$F_1$ score** is a widely used performance measure that combines _precision_ and _recall_ using the harmonic mean. The F1 score ranges from 0 (worst performance) to 1 (best _precision_ and _recall_ scores).
@@ -172,7 +176,7 @@ col_norm <- apply(f, 2, normalize)
 round(col_norm, 2)
 ```
 
-### Col-norm-F1 row equivalent maximums
+### Col-norm-F1 COLUMN equivalent maximums
 The equivalence is given by a threshold defined in `parameters`:
 ```{r}
 params$diff
@@ -186,6 +190,7 @@ col_m <- apply( col_norm, 2, function(x){ which(max(x) - x < params$diff & x != 
 
 
 In this example:  
+
 * The maximum F1 score for population 1 is achieved when this population is matched to cluster 10.
 * Many populations achieve their maximum F1 score when they are matched to cluster 2.
 
@@ -198,7 +203,7 @@ row_norm <- t(row_norm)
 round(row_norm, 2)
 ```
 
-### Row-norm-F1 row equivalent maximums
+### Row-norm-F1 ROW equivalent maximums
 Looking for those ROW MAXIMUMS that differ at least `r params$diff` from the rest in the row normalized results.
 ```{r}
 row_m <- apply( row_norm, 1, function(x){ which(max(x) - x < params$diff & x != 0) }  )
