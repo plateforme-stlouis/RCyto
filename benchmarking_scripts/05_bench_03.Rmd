@@ -1,0 +1,1178 @@
+---
+title: "Algorithm benchmarking script"
+subtitle: "03_bench_03"
+output:
+  html_document:
+    number_sections: yes
+    toc: yes
+    toc_float: yes
+    code_folding: hide
+    theme: united
+    highlight: tango
+author: Anna Guadall
+params:
+  threshold: ""
+  row: ""
+  pg: ""      # phenograph
+  fm: ""      # flowMeans
+  fp: ""      # flowPeaks
+  dp: ""      # DEPECHE
+  tpg: ""     # t-SNE + phenograph
+  tfm: ""     # t-SNE + flowMeans
+  tfp: ""     # t-SNE + flowPeaks
+  tdp: ""     # t-SNE + DEPECHE
+  tcx: ""     # t-SNE + ClusterX
+  upg: ""     # UMAP + phenograph
+  ufm: ""     # UMAP + flowMeans
+  ufp: ""     # UMAP + flowPeaks
+  udp: ""     # UMAP + DEPECHE
+  ucx: ""     # UMAP + ClusterX
+  out: 1
+  norm: ""
+  id: ""
+---
+
+```{r setup, include=FALSE, cache = FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, cache = T)
+```
+
+```{r libraries, message=FALSE, cache = FALSE}
+library(caret)
+library(cytofkit)
+library(flowPeaks)
+library(flowMeans)
+library(umap)
+library(knitr)
+library(DepecheR)
+```
+
+# Import data and functions
+```{r import rds objects, cache = F}
+ff <- readRDS(list.files(pattern = "ff"))
+matching <- readRDS(list.files(pattern = "matching"))
+mean_f1 <- readRDS(list.files(pattern = "mean_f1"))
+labels <- readRDS(list.files(pattern = "labels"))
+summ <- readRDS(list.files(pattern = "summary_table"))
+n_pops <- readRDS(list.files(pattern = "n_pops"))
+```
+
+**Data: ``r params$id``**    
+`r n_pops` populations.  
+NBormalization: `r params$norm`
+
+```{r normalize, cache = F}
+normalize <- function(x) { return ((x - min(x)) / (max(x) - min(x))) }
+```
+
+```{r row, cache = F}
+row <- as.numeric(params$row)
+```
+
+# Coloring
+```{r colors}
+coloring <-  c("darkgoldenrod1", "blue4", "blueviolet", "red", "turquoise", 
+               "burlywood3", "cadetblue", "chartreuse", "chartreuse4", "chocolate1",
+               "plum1", "cornflowerblue", "yellow", "cyan", "blue",
+               "darkgrey","khaki1", "deeppink1", "deeppink4", "black", "snow3")
+```
+
+# Descriptive
+```{r boxplot}
+boxplot(ff@exprs, las = 2)
+```
+
+# Reduction of dimensionality
+## t-SNE dimensionality reduction
+Perform t-SNE if at least one t-SNE method is required:
+```{r decide tsne}
+do_tsne <- "n"
+if (params$tpg == "y" | params$tfm == "y" | params$tfp == "y" | params$tdp == "y" | params$tcx == "y") {
+  do_tsne <- "y" 
+} else {
+  cat("t-SNE method has not been requested")
+}
+```
+
+```{r tsne}
+if (do_tsne == "y") {
+  ptm <- proc.time() # measuring CPU time
+  tsne_red <-  cytof_dimReduction(data = ff@exprs, method = "tsne", tsneSeed = 42)
+  tsne_time <- proc.time() - ptm
+  
+  tsne_red <- as.data.frame(tsne_red)
+}
+```
+
+```{r tsne plot, fig.width = 12}
+if (do_tsne == "y"){
+  tsne_df <- cbind(as.data.frame(tsne_red), as.data.frame(labels))
+  
+  tsne_map <- cytof_clusterPlot(data = tsne_df, xlab = "tsne_1", ylab = "tsne_2", 
+                                    point_size = 0.5, labelRepel = F,
+                                    cluster = "labels", sampleLabel = FALSE, labelSize = 0, 
+                                    title = paste(params$id, " Labels"),
+                                    clusterColor = coloring[1:(n_pops + as.numeric(params$out))]) 
+}
+```
+
+## UMAP dimensionality reduction
+```{r decide umap}
+do_umap <- "n"
+if (params$upg == "y" | params$ufm == "y" | params$ufp == "y" | params$udp == "y" | params$ucx == "y") {
+  do_umap <- "y"
+} 
+```
+
+```{r umap}
+if (do_umap == "y") {
+  ptm <- proc.time() # measuring CPU time
+  umap_red <- umap(ff@exprs, random_state = 42)
+  umap_time <- proc.time() - ptm
+  
+  colnames(umap_red$layout) <- c("UMAP_1", "UMAP_2")
+}
+```
+
+```{r umap plot, fig.width = 12}
+if (do_umap == "y"){
+  umap_df <- cbind(as.data.frame(umap_red$layout), as.data.frame(labels))
+  umap_map <- cytof_clusterPlot(data = umap_df, xlab = "UMAP_1", ylab = "UMAP_2", 
+                                    point_size = 0.5, labelRepel = F,
+                                    cluster = "labels", sampleLabel = FALSE, labelSize = 0, 
+                                    title = paste(params$id, " Labels"),
+                                    clusterColor = coloring[1:(n_pops + as.numeric(params$out))])
+}
+```
+
+## Export dimensionality reduction results
+```{r save tsne result, cache = F}
+if (do_tsne == "y") {
+  saveRDS(tsne_red, "tsne_red.rds")
+}
+```
+
+```{r save umap result, cache = F}
+if (do_tsne == "y") {
+  saveRDS(umap_red$layout, "umap_red.rds")
+}
+```
+
+# Clustering on all dimensions
+##  RphenoGraph
+```{r phenograph clustering}
+if (params$pg == "y"){
+  method <- "PhenoGraph"
+  
+  # clustering
+  ptm <- proc.time() # measuring CPU time
+  pred <- Rphenograph(ff@exprs) # default k = 30 nearest neighbours
+  ptm <- proc.time() - ptm
+  
+  clustering <- pred$membership
+} 
+```
+
+```{r save clustering, cache = F}
+if (params$pg == "y"){
+  saveRDS(clustering, "clustering_pheno.rds")
+}
+```
+
+```{r phenograph matching}
+if (params$pg == "y"){
+  # MATCHING LABELS AND PREDICTIONS
+  matched <- matching(clustering, labels, threshold) 
+}
+```
+
+```{r save matching, cache = F}
+if (params$pg == "y"){
+ saveRDS(matched, "matched_pheno.rds") 
+}
+```
+
+```{r phenograph performance}
+if (params$pg == "y"){
+  # COMPUTING THE CONFUSION MATRIX AND OTHER PERFORMANCE MEASUREMENTS
+  cm <- confusionMatrix(data = matched$clusters[labels != "outliers"],
+                        reference = labels[labels != "outliers"])
+  cm_merged <- confusionMatrix(
+    data = matched$merged_clusters[matched$merged_labels != "outliers"],
+    reference = matched$merged_labels[matched$merged_labels != "outliers"]
+  )
+  
+  # COMPUTE MEAN F1 and WEIGHTED MEAN F1
+  mf1 <- mean_f1(cm, cm_merged, matched$merged_labels, matched$count_merged_pops) 
+}
+```
+
+```{r phenograph results, cache = FALSE}
+if (params$pg == "y"){
+  summ[row, c(1,2,4)] <- c(params$id, params$norm, method)
+  summ[row, -c(1,2,4)] <- c(nrow(ff@exprs), threshold, length(table(clustering)),
+                         matched$partitions,
+                         mf1$mf1, mf1$mf1_w, mf1$mf1_i_w, mf1$mf1_m, mf1$mf1_m_c, 
+                         NA, NA, ptm[1] + ptm[4], ptm[3])
+  row <- row + 1
+  
+  # FOR VISUALIZATION
+  cat("\n", method)
+  cat("\nContingency matrix")
+  print(matched$c)
+  cat("\nF1 matrix")
+  print(round(matched$f, 2))
+  cat("\nConfusion matrix")
+  print(cm$table)
+  cat("\nConfusion matrix (MERGED)")
+  print(cm_merged$table) 
+}
+```
+
+##  flowMeans
+```{r flowmeans clustering}
+if (params$fm == "y"){
+  method <- "flowMeans"
+  
+  # clustering
+  ptm <- proc.time() # measuring CPU time
+  pred <- flowMeans(ff@exprs, MaxN = n_pops )
+  ptm <- proc.time() - ptm
+  
+  clustering <- pred@Labels[[1]] 
+}
+```
+
+```{r save clustering fm, cache = F}
+if (params$fm == "y"){
+  saveRDS(clustering, "clustering_flowmeans.rds")
+}
+```
+
+```{r flowmeans matching}
+if (params$fm == "y"){
+  # MATCHING LABELS AND PREDICTIONS
+  matched <- matching(clustering, labels, threshold)
+}
+```
+
+```{r save matching fm, cache = F}
+if (params$fm == "y"){
+  saveRDS(matched, "matched_flowmeans.rds")
+}
+```
+
+```{r flowmeans performance}
+if (params$fm == "y"){
+  # COMPUTING THE CONFUSION MATRIX AND OTHER PERFORMANCE MEASUREMENTS
+  cm <- confusionMatrix(data = matched$clusters[labels != "outliers"],
+                        reference = labels[labels != "outliers"])
+  cm_merged <- confusionMatrix(
+    data = matched$merged_clusters[matched$merged_labels != "outliers"],
+    reference = matched$merged_labels[matched$merged_labels != "outliers"]
+  )
+  
+  # COMPUTE MEAN F1 and WEIGHTED MEAN F1
+  mf1 <- mean_f1(cm, cm_merged, matched$merged_labels, matched$count_merged_pops)
+}
+```
+
+```{r flowmeans results, cache = FALSE}
+if (params$fm == "y"){
+  summ[row, c(1,2,4)] <- c(params$id, params$norm, method)
+  summ[row, -c(1,2,4)] <- c(nrow(ff@exprs), threshold, length(table(clustering)),
+                         matched$partitions,
+                         mf1$mf1, mf1$mf1_w, mf1$mf1_i_w, mf1$mf1_m, mf1$mf1_m_c, 
+                         NA, NA, ptm[1] + ptm[4], ptm[3])
+  row <- row + 1
+  
+  # FOR VISUALIZATION
+  cat("\n", method)
+  cat("\nContingency matrix")
+  print(matched$c)
+  cat("\nF1 matrix")
+  print(round(matched$f, 2))
+  cat("\nConfusion matrix")
+  print(cm$table)
+  cat("\nConfusion matrix (MERGED)")
+  print(cm_merged$table)
+}
+```
+
+##  flowPeaks
+```{r flowpeaks clustering}
+if (params$fp == "y"){
+  method <- "flowPeaks"
+  
+  # clustering
+  ptm <- proc.time() # measuring CPU time
+  pred <- flowPeaks(ff@exprs)
+  ptm <- proc.time() - ptm
+  
+  clustering <- pred$peaks.cluster
+}
+```
+
+```{r save clustering fp, cache = F}
+if (params$fp == "y"){
+  saveRDS(clustering, "clustering_flowpeaks.rds")
+}
+```
+
+```{r flowpeaks matching}
+if (params$fp == "y"){
+  # MATCHING LABELS AND PREDICTIONS
+  matched <- matching(clustering, labels, threshold)
+}
+```
+
+```{r save matching fp, cache = F}
+if (params$fp == "y"){
+  saveRDS(matched, "matched_flowpeaks.rds")
+}
+```
+
+```{r flowpeaks performance}
+if (params$fp == "y"){
+  # COMPUTING THE CONFUSION MATRIX AND OTHER PERFORMANCE MEASUREMENTS
+  cm <- confusionMatrix(data = matched$clusters[labels != "outliers"],
+                        reference = labels[labels != "outliers"])
+  cm_merged <- confusionMatrix(
+    data = matched$merged_clusters[matched$merged_labels != "outliers"],
+    reference = matched$merged_labels[matched$merged_labels != "outliers"]
+  )
+  
+  # COMPUTE MEAN F1 and WEIGHTED MEAN F1
+  mf1 <- mean_f1(cm, cm_merged, matched$merged_labels, matched$count_merged_pops)
+}
+```
+
+```{r flowpeaks results, cache = FALSE}
+if (params$fp == "y"){
+  summ[row, c(1,2,4)] <- c(params$id, params$norm, method)
+  summ[row, -c(1,2,4)] <- c(nrow(ff@exprs), threshold, length(table(clustering)),
+                          matched$partitions,
+                          mf1$mf1, mf1$mf1_w, mf1$mf1_i_w, mf1$mf1_m, mf1$mf1_m_c, 
+                          NA, NA, ptm[1] + ptm[4], ptm[3])
+  row <- row + 1
+  
+  # FOR VISUALIZATION
+  cat("\n", method)
+  cat("\nContingency matrix")
+  print(matched$c)
+  cat("\nF1 matrix")
+  print(round(matched$f, 2))
+  cat("\nConfusion matrix")
+  print(cm$table)
+  cat("\nConfusion matrix (MERGED)")
+  print(cm_merged$table)
+}
+```
+
+##  DEPECHE
+```{r depeche clustering}
+if (params$dp == "y"){
+  method <- "DEPECHE"
+  
+  set.seed(42)
+  # clustering
+  ptm <- proc.time() # measuring CPU time
+  pred <-  depeche(ff@exprs, createOutput = F)
+  ptm <- proc.time() - ptm
+  
+  clustering <- pred$clusterVector
+}
+```
+
+```{r save clustering dp, cache = F}
+if (params$dp == "y"){
+  saveRDS(clustering, "clustering_depeche.rds")
+}
+```
+
+```{r depeche matching, eval = F}
+if (params$dp == "y"){
+  # MATCHING LABELS AND PREDICTIONS
+  matched <- matching(clustering, labels, threshold)
+}
+```
+
+```{r save matching dp, cache = F}
+if (params$dp == "y"){
+  saveRDS(matched, "matched_depeche.rds")
+}
+```
+
+```{r depeche performance}
+if (params$dp == "y"){
+  # COMPUTING THE CONFUSION MATRIX AND OTHER PERFORMANCE MEASUREMENTS
+  cm <- confusionMatrix(data = matched$clusters[labels != "outliers"],
+                        reference = labels[labels != "outliers"])
+  cm_merged <- confusionMatrix(
+    data = matched$merged_clusters[matched$merged_labels != "outliers"],
+    reference = matched$merged_labels[matched$merged_labels != "outliers"]
+  )
+  
+  # COMPUTE MEAN F1 and WEIGHTED MEAN F1
+  mf1 <- mean_f1(cm, cm_merged, matched$merged_labels, matched$count_merged_pops)
+}
+```
+
+```{r depeche results, cache = FALSE}
+if (params$dp == "y"){
+  summ[row, c(1,2,4)] <- c(params$id, params$norm, method)
+  summ[row, -c(1,2,4)] <- c(nrow(ff@exprs), threshold, length(table(clustering)),
+                          matched$partitions,
+                          mf1$mf1, mf1$mf1_w, mf1$mf1_i_w, mf1$mf1_m, mf1$mf1_m_c, 
+                          NA, NA, ptm[1] + ptm[4], ptm[3])
+  row <- row + 1
+  
+  # FOR VISUALIZATION
+  cat("\n", method)
+  cat("\nContingency matrix")
+  print(matched$c)
+  cat("\nF1 matrix")
+  print(round(matched$f, 2))
+  cat("\nConfusion matrix")
+  print(cm$table)
+  cat("\nConfusion matrix (MERGED)")
+  print(cm_merged$table)
+}
+```
+
+# Clustering on t-SNE-reduced data (2D)
+##  RphenoGraph
+```{r tsne phenograph clustering}
+if (params$tpg == "y"){
+  method <- "t-SNE + PhenoGraph"
+  
+  # clustering
+  ptm <- proc.time() # measuring CPU time
+  pred <- Rphenograph(tsne_red) # default k = 30 nearest neighbours
+  ptm <- proc.time() - ptm
+  
+  clustering <- pred$membership
+}
+```
+
+```{r save clustering tsne pheno, cache = F}
+if (params$tpg == "y"){
+  saveRDS(clustering, "clustering_t_pheno.rds")
+}
+```
+
+```{r tsne phenograph matching}
+if (params$tpg == "y"){
+  # MATCHING LABELS AND PREDICTIONS
+  matched <- matching(clustering, labels, threshold)
+}
+```
+
+```{r save matching tsne pheno, cache = F}
+if (params$tpg == "y"){
+  saveRDS(matched, "matched_t_pheno.rds")
+}
+```
+
+```{r tsne phenograph performance}
+if (params$tpg == "y"){
+  # COMPUTING THE CONFUSION MATRIX AND OTHER PERFORMANCE MEASUREMENTS
+  cm <- confusionMatrix(data = matched$clusters[labels != "outliers"],
+                        reference = labels[labels != "outliers"])
+  cm_merged <- confusionMatrix(
+    data = matched$merged_clusters[matched$merged_labels != "outliers"],
+    reference = matched$merged_labels[matched$merged_labels != "outliers"]
+  )
+  
+  # COMPUTE MEAN F1 and WEIGHTED MEAN F1
+  mf1 <- mean_f1(cm, cm_merged, matched$merged_labels, matched$count_merged_pops)
+}
+```
+
+```{r tsne phenograph results, cache = FALSE}
+if (params$tpg == "y"){
+  summ[row, c(1,2,4)] <- c(params$id, params$norm, method)
+  summ[row, -c(1,2,4)] <- c(nrow(ff@exprs), threshold, length(table(clustering)),
+                          matched$partitions,
+                          mf1$mf1, mf1$mf1_w, mf1$mf1_i_w, mf1$mf1_m, mf1$mf1_m_c, 
+                          tsne_time[1] + tsne_time[4], tsne_time[3], ptm[1] + ptm[4], ptm[3])
+  row <- row + 1
+  
+  # FOR VISUALIZATION
+  cat("\n", method)
+  cat("\nContingency matrix")
+  print(matched$c)
+  cat("\nF1 matrix")
+  print(round(matched$f, 2))
+  cat("\nConfusion matrix")
+  print(cm$table)
+  cat("\nConfusion matrix (MERGED)")
+  print(cm_merged$table)
+}
+```
+
+## flowMeans
+```{r tsne flowmeans clustering}
+if (params$tfm == "y"){
+  method <- "t-SNE + flowMeans"
+  
+  # clustering
+  ptm <- proc.time() # measuring CPU time
+  pred <- flowMeans(tsne_red, MaxN = n_pops )
+  ptm <- proc.time() - ptm
+  
+  clustering <- pred@Labels[[1]]
+}
+```
+
+```{r save clustering tsne fm, cache = F}
+if (params$tfm == "y"){
+  saveRDS(clustering, "clustering_t_flowmeans.rds")
+}
+```
+
+```{r tsne flowmeans matching}
+if (params$tfm == "y"){
+  # MATCHING LABELS AND PREDICTIONS
+  matched <- matching(clustering, labels, threshold)
+}
+```
+
+```{r save matching tsne fm, cache = F}
+if (params$tfm == "y"){
+  saveRDS(matched, "matched_t_flowmeans.rds")
+}
+```
+
+```{r tsne flowmeans performance}
+if (params$tfm == "y"){
+  # COMPUTING THE CONFUSION MATRIX AND OTHER PERFORMANCE MEASUREMENTS
+  cm <- confusionMatrix(data = matched$clusters[labels != "outliers"],
+                        reference = labels[labels != "outliers"])
+  cm_merged <- confusionMatrix(
+    data = matched$merged_clusters[matched$merged_labels != "outliers"],
+    reference = matched$merged_labels[matched$merged_labels != "outliers"]
+  )
+  
+  # COMPUTE MEAN F1 and WEIGHTED MEAN F1
+  mf1 <- mean_f1(cm, cm_merged, matched$merged_labels, matched$count_merged_pops)
+}
+```
+
+```{r tsne flowmeans results, cache = FALSE}
+if (params$tfm == "y"){
+  summ[row, c(1,2,4)] <- c(params$id, params$norm, method)
+  summ[row, -c(1,2,4)] <- c(nrow(ff@exprs), threshold, length(table(clustering)),
+                          matched$partitions,
+                          mf1$mf1, mf1$mf1_w, mf1$mf1_i_w, mf1$mf1_m, mf1$mf1_m_c, 
+                          tsne_time[1] + tsne_time[4], tsne_time[3], ptm[1] + ptm[4], ptm[3])
+  row <- row + 1
+  
+  # FOR VISUALIZATION
+  cat("\n", method)
+  cat("\nContingency matrix")
+  print(matched$c)
+  cat("\nF1 matrix")
+  print(round(matched$f, 2))
+  cat("\nConfusion matrix")
+  print(cm$table)
+  cat("\nConfusion matrix (MERGED)")
+  print(cm_merged$table)
+}
+```
+
+## flowPeaks
+```{r tsne flowpeaks clustering}
+if (params$tfp == "y"){
+  method <- "t-SNE + flowPeaks"
+  
+  # clustering
+  ptm <- proc.time() # measuring CPU time
+  pred <- flowPeaks(tsne_red) 
+  ptm <- proc.time() - ptm
+  
+  clustering <- pred$peaks.cluster
+}
+```
+
+```{r save clustering tsne fp, cache = F}
+if (params$tfp == "y"){
+  saveRDS(clustering, "clustering_t_flowpeaks.rds")
+}
+```
+
+```{r tsne flowpeaks matching}
+if (params$tfp == "y"){
+  # MATCHING LABELS AND PREDICTIONS
+  matched <- matching(clustering, labels, threshold)
+}
+```
+
+```{r save matching tsne fp}
+if (params$tfp == "y"){
+  saveRDS(matched, "matched_t_flowpeaks.rds")
+}
+```
+
+```{r tsne flowpeaks performance}
+if (params$tfp == "y"){
+  # COMPUTING THE CONFUSION MATRIX AND OTHER PERFORMANCE MEASUREMENTS
+  cm <- confusionMatrix(data = matched$clusters[labels != "outliers"],
+                        reference = labels[labels != "outliers"])
+  cm_merged <- confusionMatrix(
+    data = matched$merged_clusters[matched$merged_labels != "outliers"],
+    reference = matched$merged_labels[matched$merged_labels != "outliers"]
+  )
+  
+  # COMPUTE MEAN F1 and WEIGHTED MEAN F1
+  mf1 <- mean_f1(cm, cm_merged, matched$merged_labels, matched$count_merged_pops)
+}
+```
+
+```{r tsne flowpeaks results, cache = FALSE}
+if (params$tfp == "y"){
+  summ[row, c(1,2,4)] <- c(params$id, params$norm, method)
+  summ[row, -c(1,2,4)] <- c(nrow(ff@exprs), threshold, length(table(clustering)),
+                          matched$partitions,
+                          mf1$mf1, mf1$mf1_w, mf1$mf1_i_w, mf1$mf1_m, mf1$mf1_m_c, 
+                          tsne_time[1] + tsne_time[4], tsne_time[3], ptm[1] + ptm[4], ptm[3])
+  row <- row + 1
+  
+  # FOR VISUALIZATION
+  cat("\n", method)
+  cat("\nContingency matrix")
+  print(matched$c)
+  cat("\nF1 matrix")
+  print(round(matched$f, 2))
+  cat("\nConfusion matrix")
+  print(cm$table)
+  cat("\nConfusion matrix (MERGED)")
+  print(cm_merged$table)
+}
+```
+
+##  DEPECHE
+```{r tsne depeche clustering}
+if (params$tdp == "y"){
+  method <- "t-SNE + DEPECHE"
+  
+  set.seed(42)
+  # clustering
+  ptm <- proc.time() # measuring CPU time
+  pred <-  depeche(tsne_red, createOutput = F)
+  ptm <- proc.time() - ptm
+  
+  clustering <- pred$clusterVector
+}
+```
+
+```{r save clustering tsne depeche}
+if (params$tdp == "y"){
+  saveRDS(clustering, "clustering_t_depeche.rds")
+}
+```
+
+```{r tsne depeche matching}
+if (params$tdp == "y"){
+  # MATCHING LABELS AND PREDICTIONS
+  matched <- matching(clustering, labels, threshold)
+}
+```
+
+```{r save matching tsne depeche}
+if (params$tdp == "y"){
+  saveRDS(matched, "matched_t_depeche.rds")
+}
+```
+
+```{r tsne depeche performance}
+if (params$tdp == "y"){
+  # COMPUTING THE CONFUSION MATRIX AND OTHER PERFORMANCE MEASUREMENTS
+  cm <- confusionMatrix(data = matched$clusters[labels != "outliers"],
+                        reference = labels[labels != "outliers"])
+  cm_merged <- confusionMatrix(
+    data = matched$merged_clusters[matched$merged_labels != "outliers"],
+    reference = matched$merged_labels[matched$merged_labels != "outliers"]
+  )
+  
+  # COMPUTE MEAN F1 and WEIGHTED MEAN F1
+  mf1 <- mean_f1(cm, cm_merged, matched$merged_labels, matched$count_merged_pops)
+}
+```
+
+```{r tsne depeche results, cache = FALSE}
+if (params$tdp == "y"){
+  summ[row, c(1,2,4)] <- c(params$id, params$norm, method)
+  summ[row, -c(1,2,4)] <- c(nrow(ff@exprs), threshold, length(table(clustering)),
+                          matched$partitions,
+                          mf1$mf1, mf1$mf1_w, mf1$mf1_i_w, mf1$mf1_m, mf1$mf1_m_c, 
+                          tsne_time[1] + tsne_time[4], tsne_time[3], ptm[1] + ptm[4], ptm[3])
+  row <- row + 1
+  
+  # FOR VISUALIZATION
+  cat("\n", method)
+  cat("\nContingency matrix")
+  print(matched$c)
+  cat("\nF1 matrix")
+  print(round(matched$f, 2))
+  cat("\nConfusion matrix")
+  print(cm$table)
+  cat("\nConfusion matrix (MERGED)")
+  print(cm_merged$table)
+}
+```
+
+##  ClusterX
+```{r tsne clusterx clustering}
+if (params$tcx == "y"){
+  method <- "t-SNE + ClusterX"
+  
+  # clustering
+  ptm <- proc.time() # measuring CPU time
+  clustering <- cytof_cluster(tsne_red, method = "ClusterX")
+  ptm <- proc.time() - ptm
+}
+```
+
+```{r save clustering tsne clusterx}
+if (params$tcx == "y"){
+  saveRDS(clustering, "clustering_t_clusterx.rds")
+}
+```
+
+```{r tsne clusterx matching}
+if (params$tcx == "y"){
+  # MATCHING LABELS AND PREDICTIONS
+  matched <- matching(clustering, labels, threshold)
+}
+```
+
+```{r save matching tsne clusterx}
+if (params$tcx == "y"){
+  saveRDS(matched, "matched_t_clusterx.rds")
+}
+```
+
+```{r tsne clusterx performance}
+if (params$tcx == "y"){
+  # COMPUTING THE CONFUSION MATRIX AND OTHER PERFORMANCE MEASUREMENTS
+  cm <- confusionMatrix(data = matched$clusters[labels != "outliers"],
+                        reference = labels[labels != "outliers"])
+  cm_merged <- confusionMatrix(
+    data = matched$merged_clusters[matched$merged_labels != "outliers"],
+    reference = matched$merged_labels[matched$merged_labels != "outliers"]
+  )
+  
+  # COMPUTE MEAN F1 and WEIGHTED MEAN F1
+  mf1 <- mean_f1(cm, cm_merged, matched$merged_labels, matched$count_merged_pops)
+}
+```
+
+```{r tsne clusterx results, cache = FALSE}
+if (params$tcx == "y"){
+  summ[row, c(1,2,4)] <- c(params$id, params$norm, method)
+  summ[row, -c(1,2,4)] <- c(nrow(ff@exprs), threshold, length(table(clustering)),
+                          matched$partitions,
+                          mf1$mf1, mf1$mf1_w, mf1$mf1_i_w, mf1$mf1_m, mf1$mf1_m_c, 
+                          tsne_time[1] + tsne_time[4], tsne_time[3], ptm[1] + ptm[4], ptm[3])
+  row <- row + 1
+  
+  # FOR VISUALIZATION
+  cat("\n", method)
+  cat("\nContingency matrix")
+  print(matched$c)
+  cat("\nF1 matrix")
+  print(round(matched$f, 2))
+  cat("\nConfusion matrix")
+  print(cm$table)
+  cat("\nConfusion matrix (MERGED)")
+  print(cm_merged$table)
+}
+```
+
+# Clustering on UMAP-reduced data (2D)
+##  RphenoGraph
+```{r umap phenograph clustering}
+if (params$upg == "y"){
+  method <- "UMAP + PhenoGraph"
+  
+  # clustering
+  ptm <- proc.time() # measuring CPU time
+  pred <- Rphenograph(umap_red$layout) # default k = 30 nearest neighbours
+  ptm <- proc.time() - ptm
+  
+  clustering <- pred$membership
+}
+```
+
+```{r save clustering umap pheno}
+if (params$upg == "y"){
+  saveRDS(clustering, "clustering_u_pheno.rds")
+}
+```
+
+```{r umap phenograph matching}
+if (params$upg == "y"){
+  # MATCHING LABELS AND PREDICTIONS
+  matched <- matching(clustering, labels, threshold)
+}
+```
+
+```{r save matching umap pheno}
+if (params$upg == "y"){
+  saveRDS(matched, "matched_u_pheno.rds")
+}
+```
+
+```{r umap phenograph performance}
+if (params$upg == "y"){
+  # COMPUTING THE CONFUSION MATRIX AND OTHER PERFORMANCE MEASUREMENTS
+  cm <- confusionMatrix(data = matched$clusters[labels != "outliers"],
+                        reference = labels[labels != "outliers"])
+  cm_merged <- confusionMatrix(
+    data = matched$merged_clusters[matched$merged_labels != "outliers"],
+    reference = matched$merged_labels[matched$merged_labels != "outliers"]
+  )
+  
+  # COMPUTE MEAN F1 and WEIGHTED MEAN F1
+  mf1 <- mean_f1(cm, cm_merged, matched$merged_labels, matched$count_merged_pops)
+}
+```
+
+```{r umap phenograph results, cache = FALSE}
+if (params$upg == "y"){
+  summ[row, c(1,2,4)] <- c(params$id, params$norm, method)
+  summ[row, -c(1,2,4)] <- c(nrow(ff@exprs), threshold, length(table(clustering)),
+                          matched$partitions,
+                          mf1$mf1, mf1$mf1_w, mf1$mf1_i_w, mf1$mf1_m, mf1$mf1_m_c, 
+                          umap_time[1] + umap_time[4], umap_time[3], ptm[1] + ptm[4], ptm[3])
+  row <- row + 1
+  
+  # FOR VISUALIZATION
+  cat("\n", method)
+  cat("\nContingency matrix")
+  print(matched$c)
+  cat("\nF1 matrix")
+  print(round(matched$f, 2))
+  cat("\nConfusion matrix")
+  print(cm$table)
+  cat("\nConfusion matrix (MERGED)")
+  print(cm_merged$table)
+}
+```
+
+##  flowMeans
+```{r umap flowmeans clustering}
+if (params$ufm == "y"){
+  method <- "UMAP + flowMeans"
+  
+  # clustering
+  ptm <- proc.time() # measuring CPU time
+  pred <- flowMeans(umap_red$layout, MaxN = n_pops )
+  ptm <- proc.time() - ptm
+  
+  clustering <- pred@Labels[[1]]
+}
+```
+
+```{r save clustering umap fm}
+if (params$ufm == "y"){
+  saveRDS(clustering, "clustering_u_flowmeans.rds")
+}
+```
+
+```{r umap flowmeans matching}
+if (params$ufm == "y"){
+# MATCHING LABELS AND PREDICTIONS
+  matched <- matching(clustering, labels, threshold)
+}
+```
+
+```{r save matching umap flowmean}
+if (params$ufm == "y"){
+  saveRDS(matched, "matched_u_flowmeans.rds")
+}  
+```
+
+```{r umap flowmeans performance}
+if (params$ufm == "y"){
+  # COMPUTING THE CONFUSION MATRIX AND OTHER PERFORMANCE MEASUREMENTS
+  cm <- confusionMatrix(data = matched$clusters[labels != "outliers"],
+                        reference = labels[labels != "outliers"])
+  cm_merged <- confusionMatrix(
+    data = matched$merged_clusters[matched$merged_labels != "outliers"],
+    reference = matched$merged_labels[matched$merged_labels != "outliers"]
+  )
+  
+  # COMPUTE MEAN F1 and WEIGHTED MEAN F1
+  mf1 <- mean_f1(cm, cm_merged, matched$merged_labels, matched$count_merged_pops)
+}
+```
+
+```{r umap flowmeans results, cache = FALSE}
+if (params$ufm == "y"){
+  summ[row, c(1,2,4)] <- c(params$id, params$norm, method)
+  summ[row, -c(1,2,4)] <- c(nrow(ff@exprs), threshold, length(table(clustering)),
+                          matched$partitions,
+                          mf1$mf1, mf1$mf1_w, mf1$mf1_i_w, mf1$mf1_m, mf1$mf1_m_c, 
+                          umap_time[1] + umap_time[4], umap_time[3], ptm[1] + ptm[4], ptm[3])
+  row <- row + 1
+  
+  # FOR VISUALIZATION
+  cat("\n", method)
+  cat("\nContingency matrix")
+  print(matched$c)
+  cat("\nF1 matrix")
+  print(round(matched$f, 2))
+  cat("\nConfusion matrix")
+  print(cm$table)
+  cat("\nConfusion matrix (MERGED)")
+  print(cm_merged$table)
+}
+```
+
+##  flowPeaks
+```{r umap flowpeaks clustering}
+if (params$ufp == "y"){
+  method <- "UMAP + flowPeaks"
+  
+  # clustering
+  ptm <- proc.time() # measuring CPU time
+  pred <- flowPeaks(umap_red$layout)
+  ptm <- proc.time() - ptm
+  
+  clustering <- pred$peaks.cluster
+}
+```
+
+```{r save clustering umap fp}
+if (params$ufp == "y"){
+  saveRDS(clustering, "clustering_u_flowpeaks.rds")
+}
+```
+
+```{r umap flowpeaks matching}
+if (params$ufp == "y"){
+  # MATCHING LABELS AND PREDICTIONS
+  matched <- matching(clustering, labels, threshold)
+}
+```
+
+```{r save matching umap flowpeaks}
+if (params$ufp == "y"){
+  saveRDS(matched, "matched_u_flowpeaks.rds")
+}
+```
+
+```{r umap flowpeaks performance}
+if (params$ufp == "y"){
+  # COMPUTING THE CONFUSION MATRIX AND OTHER PERFORMANCE MEASUREMENTS
+  cm <- confusionMatrix(data = matched$clusters[labels != "outliers"],
+                        reference = labels[labels != "outliers"])
+  cm_merged <- confusionMatrix(
+    data = matched$merged_clusters[matched$merged_labels != "outliers"],
+    reference = matched$merged_labels[matched$merged_labels != "outliers"]
+  )
+  
+  # COMPUTE MEAN F1 and WEIGHTED MEAN F1
+  mf1 <- mean_f1(cm, cm_merged, matched$merged_labels, matched$count_merged_pops)
+}
+```
+
+```{r umap flowpeaks results, cache = FALSE}
+if (params$ufp == "y"){
+  summ[row, c(1,2,4)] <- c(params$id, params$norm, method)
+  summ[row, -c(1,2,4)] <- c(nrow(ff@exprs), threshold, length(table(clustering)),
+                          matched$partitions,
+                          mf1$mf1, mf1$mf1_w, mf1$mf1_i_w, mf1$mf1_m, mf1$mf1_m_c, 
+                          umap_time[1] + umap_time[4], umap_time[3], ptm[1] + ptm[4], ptm[3])
+  row <- row + 1
+  
+  # FOR VISUALIZATION
+  cat("\n", method)
+  cat("\nContingency matrix")
+  print(matched$c)
+  cat("\nF1 matrix")
+  print(round(matched$f, 2))
+  cat("\nConfusion matrix")
+  print(cm$table)
+  cat("\nConfusion matrix (MERGED)")
+  print(cm_merged$table)
+}
+```
+
+##  DEPECHE
+```{r umap depeche clustering}
+if (params$udp == "y"){
+  method <- "UMAP + DEPECHE"
+  
+  set.seed(42)
+  # clustering
+  ptm <- proc.time() # measuring CPU time
+  pred <-  depeche(umap_red$layout, createOutput = F)
+  ptm <- proc.time() - ptm
+  
+  clustering <- pred$clusterVector
+}
+```
+
+```{r save clustering umap depeche}
+if (params$udp == "y"){
+  saveRDS(clustering, "clustering_u_depeche.rds")
+}
+```
+
+```{r umap depeche matching}
+if (params$udp == "y"){
+  # MATCHING LABELS AND PREDICTIONS
+  matched <- matching(clustering, labels, threshold)
+}
+```
+
+```{r save matching umap depeche}
+if (params$udp == "y"){
+  saveRDS(matched, "matched_u_depeche.rds")
+}
+```
+
+```{r umap depeche performance}
+if (params$udp == "y"){
+  # COMPUTING THE CONFUSION MATRIX AND OTHER PERFORMANCE MEASUREMENTS
+  cm <- confusionMatrix(data = matched$clusters[labels != "outliers"],
+                        reference = labels[labels != "outliers"])
+  cm_merged <- confusionMatrix(
+    data = matched$merged_clusters[matched$merged_labels != "outliers"],
+    reference = matched$merged_labels[matched$merged_labels != "outliers"]
+  )
+  
+  # COMPUTE MEAN F1 and WEIGHTED MEAN F1
+  mf1 <- mean_f1(cm, cm_merged, matched$merged_labels, matched$count_merged_pops)
+}
+```
+
+```{r umap depeche results, cache = FALSE}
+if (params$udp == "y"){
+  summ[row, c(1,2,4)] <- c(params$id, params$norm, method)
+  summ[row, -c(1,2,4)]<- c(nrow(ff@exprs), threshold, length(table(clustering)),
+                         matched$partitions,
+                         mf1$mf1, mf1$mf1_w, mf1$mf1_i_w, mf1$mf1_m, mf1$mf1_m_c, 
+                         umap_time[1] + umap_time[4], umap_time[3], ptm[1] + ptm[4], ptm[3])
+  row <- row + 1
+  
+  # FOR VISUALIZATION
+  cat("\n", method)
+  cat("\nContingency matrix")
+  print(matched$c)
+  cat("\nF1 matrix")
+  print(round(matched$f, 2))
+  cat("\nConfusion matrix")
+  print(cm$table)
+  cat("\nConfusion matrix (MERGED)")
+  print(cm_merged$table)
+}
+```
+
+##  ClusterX
+```{r umap clusterx clustering}
+if (params$ucx == "y"){
+  method <- "UMAP + ClusterX"
+  
+  # clustering
+  ptm <- proc.time() # measuring CPU time
+  clustering <- cytof_cluster(umap_red$layout, method = "ClusterX")
+  ptm <- proc.time() - ptm
+}
+```
+
+```{r save clustering umap clusterx}
+if (params$ucx == "y"){
+saveRDS(clustering, "clustering_u_clusterx.rds")
+}
+```
+
+```{r umap clusterx matching}
+if (params$ucx == "y"){
+  # MATCHING LABELS AND PREDICTIONS
+  matched <- matching(clustering, labels, threshold)
+}
+```
+
+```{r save matching umap clusterx}
+if (params$ucx == "y"){
+  saveRDS(matched, "matched_u_clusterx.rds")
+}
+```
+
+```{r umap clusterx performance}
+if (params$ucx == "y"){
+  # COMPUTING THE CONFUSION MATRIX AND OTHER PERFORMANCE MEASUREMENTS
+  cm <- confusionMatrix(data = matched$clusters[labels != "outliers"],
+                        reference = labels[labels != "outliers"])
+  cm_merged <- confusionMatrix(
+    data = matched$merged_clusters[matched$merged_labels != "outliers"],
+    reference = matched$merged_labels[matched$merged_labels != "outliers"]
+  )
+  
+  # COMPUTE MEAN F1 and WEIGHTED MEAN F1
+  mf1 <- mean_f1(cm, cm_merged, matched$merged_labels, matched$count_merged_pops)
+}
+```
+
+```{r umap clusterx results, cache = FALSE}
+if (params$ucx == "y"){
+  summ[row, c(1,2,4)] <- c(params$id, params$norm, method)
+  summ[row, -c(1,2,4)]<- c(nrow(ff@exprs), threshold, length(table(clustering)),
+                         matched$partitions,
+                         mf1$mf1, mf1$mf1_w, mf1$mf1_i_w, mf1$mf1_m, mf1$mf1_m_c, 
+                         umap_time[1] + umap_time[4], umap_time[3], ptm[1] + ptm[4], ptm[3])
+  row <- row + 1
+  
+  # FOR VISUALIZATION
+  cat("\n", method)
+  cat("\nContingency matrix")
+  print(matched$c)
+  cat("\nF1 matrix")
+  print(round(matched$f, 2))
+  cat("\nConfusion matrix")
+  print(cm$table)
+  cat("\nConfusion matrix (MERGED)")
+  print(cm_merged$table)
+}
+```
+
+# Results
+```{r maps, cache = FALSE}
+tsne_map
+umap_map
+```
+
+```{r results, cache = FALSE}
+library(knitr)
+for(i in 8:16){
+  summ[,i] <- as.numeric(summ[,i])
+}
+
+kable(summ, digits = 3)
+```
+
+```{r export results, cache = FALSE}
+# export results 
+write.table(summ, "summary.txt", append = T, sep = "\t", row.names = F, col.names = T)
+```
+
+# Libraries
+```{r sessioninfo, cache = F}
+sessionInfo()
+```
+
+
+
+
+
+
+
+
+
+
+
+
+

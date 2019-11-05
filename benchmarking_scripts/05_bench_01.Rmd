@@ -1,0 +1,137 @@
+---
+title: "Algorithm benchmarking script"
+subtitle: "03_bench_01"
+output:
+  html_document:
+    number_sections: yes
+    toc: yes
+    toc_float: yes
+    code_folding: hide
+    theme: united
+    highlight: tango
+author: Anna Guadall
+params:
+  file: ""
+  id: ""
+  outliers:
+    label: "0: no outiliers, 1: outliers"
+    value: 0
+  norm: ""
+---
+
+```{r setup, include=FALSE, cache = FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, cache = T)
+```
+
+```{r libraries, message=FALSE, cache = FALSE}
+library(caret)
+library(cytofkit)
+library(flowMeans) # necessary for count() function!?
+library(umap)
+library(knitr)
+library(flowCore)
+```
+
+# Parameters
+```{r params}
+params
+```
+
+# Functions
+```{r normalize, cache = F}
+normalize <- function(x) { return ((x - min(x)) / (max(x) - min(x))) }
+```
+
+# Reading the data
+```{r data}
+# import the fcs file
+ff <- read.FCS(params$file)
+
+# Import the labels
+labels <- readRDS(list.files(pattern = "labels"))
+
+# number of populations
+n_pops <- length(levels(labels)) - as.numeric(params$outliers)
+
+# parameters
+colnames(ff@exprs)
+```
+
+```{r head}
+head(ff@exprs)
+```
+
+```{r boxplot}
+summary(ff@exprs)
+par(cex.axis = 0.5)
+boxplot(ff@exprs, las = 2)
+```
+
+```{r dotplot}
+plot(ff@exprs[,1], ff@exprs[,2])
+```
+
+```{r pops, cache = FALSE}
+# save the number of populations
+saveRDS(n_pops, "n_pops.rds")
+```
+
+```{r freqs}
+# Computing  populations' frequencies
+ref_pops_freq <- (prop.table(table(labels)))*100
+table_frqs <- cbind(count(labels), round(ref_pops_freq, 2))
+table_frqs <- table_frqs[,c(1:2,4)]
+colnames(table_frqs) <- c("Labels", "Counts", "Frequencies")
+```
+
+Date: ``r Sys.Date()``  
+File: ``r params$id``   
+``r nrow(ff@exprs)`` events.  
+`r n_pops` populations.  
+`r ncol(ff@exprs)` parameters.  
+Normalization: `r params$norm`  
+
+```{r table freqs}
+kable(table_frqs)
+```
+
+```{r export freqs, cache = F}
+saveRDS(table_frqs, "frequencies.rds")
+```
+
+# Normalize (min-max scaling)
+```{r norm}
+if (params$norm == "y"){
+  data_norm <- apply(ff@exprs, 2, normalize)
+  summary(data_norm)
+  par(cex.axis = 0.5)
+  boxplot(data_norm, las = 2)
+  ff <- new("flowFrame", exprs = as.matrix(data_norm))
+} else {
+  cat("Normalization of data has not been requested")
+}
+```
+
+```{r save flowframe, cache = F}
+saveRDS(ff, "ff.rds")
+```
+
+# Preparing results tables
+```{r table}
+pops_f1 <- c()
+summ <- data.frame(File = NA, Norm = NA, n = 0, Method = NA, Threshold = 0, 
+                   Clusters = 0, Partitions = 0, 
+                   Mean_F1 = 0, Weighted_mean_F1 = 0, Inversed_weights_mean_F1 = 0,
+                   Mean_F1_merged = 0, Corrected_mean_F1_merged = 0,
+                   Reduction_user_time = 0, Reduction_elapsed_time = 0,
+                   Clustering_user_time = 0, Clustering_elapsed_time = 0)
+```
+
+```{r save table, cache = F}
+saveRDS(summ, "summary_table.rds")
+```
+
+# Libraries
+```{r sessioninfo, cache = F}
+sessionInfo()
+```

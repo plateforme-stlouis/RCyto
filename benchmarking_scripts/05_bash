@@ -1,0 +1,129 @@
+#!/bin/bash
+
+### Define the parameters ###############################################
+
+# Directory with the samples to be analyzed
+dir="semi_11_150"
+
+# Name of the label list to be used
+labs="labels"
+
+# Do the samples have OUTLIERS? (0: no outiliers, 1: outliers)
+# Real data has outliers, synthetic and semi-synthetic data do not
+out=0
+
+# Indicate the number of clusters to be tested with FowSOM
+# between comas, i.g. "5,10,20" 
+clus="20,30,40"
+
+# Indicate the threshold to compute equivalent row and column maximums
+thres=0.05
+
+##########################################################################
+
+### Specify the methods to be compared ###################################
+
+# Indicate "y" or "n"
+
+fs="y"      # flowSOM
+pg="y"      # phenograph
+fm="n"      # flowMeans
+fp="n"      # flowPeaks
+dp="n"      # DEPECHE
+tpg="n"     # t-SNE + phenograph
+tfm="n"     # t-SNE + flowMeans
+tfp="y"     # t-SNE + flowPeaks
+tdp="n"     # t-SNE + DEPECHE
+tcx="n"     # t-SNE + ClusterX
+upg="n"     # UMAP + phenograph
+ufm="n"     # UMAP + flowMeans
+ufp="y"     # UMAP + flowPeaks
+udp="n"     # UMAP + DEPECHE
+ucx="n"     # UMAP + ClusterX
+
+##########################################################################
+
+### Specify if tdata needs to be normalized ##############################
+# Indicate "y" or "n"
+
+norm="n"
+
+if [ $norm == "y" ]     
+then
+    data="norm"
+else
+    data="raw"
+fi
+
+##########################################################################
+
+### Execute the script that exports the functions as rds elements
+Rscript 05_functions.R
+
+# Create a directory name for the analyses
+dir_analysis="analysis"_${data}_${labs}
+
+### Iterate over the samples in $dir :
+for i in `ls $dir`
+do  
+    # Create a directory inside the sample directory 
+    # and copy all the Rmd and scripts in this directory
+    mkdir ${dir}/${i}/${dir_analysis}
+
+    # remove eventual previous results
+    cd ${dir}/${i}/${dir_analysis}
+    rm ff*
+    rm frequencies.rds
+    rm summary*
+    rm tsne_red.rds
+    rm umap_red.rds
+    rm *labels*
+    rm clustering*
+    rm matched*
+    rm n_pops.rds
+    rm summ*
+    cd ../../..
+
+    # Copy all the rds scripts (functions and labels), the Rmd scripts and the labels to this directory
+    cp *.rds ${dir}/${i}/${dir_analysis}/.
+    cp ${dir}/${i}/${labs} ${dir}/${i}/${dir_analysis}/${labs}.rds
+    cp *.Rmd ${dir}/${i}/${dir_analysis}/.
+
+    # Execute the first R script taking all the variables as command arguments
+	Rscript 05_R_script_1.R $dir $i ${dir_analysis} $out $norm --save
+
+    # Initiate counter for the rows of the summary table
+    row=1
+
+    # If fs="y", run flowSOM iterating over the number of clusters indicated
+    if [ $fs == "y" ]
+    then
+        for j in ${clus//,/ } 
+        do
+            # Create an Rmd for each cluster number
+            cp 05_bench_02.Rmd ${dir}/${i}/${dir_analysis}/05_bench_02_${j}.Rmd
+
+            # Create variables for the current summary table and labels file
+            temp_summ=`ls ${dir}/${i}/${dir_analysis} | grep summary_table`
+            #temp_labs=`ls ${dir}/${i}/${dir_analysis} | grep summary_table`
+
+            # run the second R script for flowSOM taking $j as argument
+            Rscript 05_R_script_2.R $dir $i ${dir_analysis} $j $thres $row $norm --save
+
+            # Copy again the labels (in case they have been lost)
+            cp ${dir}/${i}/${labs} ${dir}/${i}/${dir_analysis}/${labs}.rds
+
+            # New rds elements with the summary table and labels have been created. Erase the previous ones:
+            rm ${dir}/${i}/${dir_analysis}/${temp_summ}
+            #rm ${dir}/${i}/${dir_analysis}/${temp_labs}
+
+            # increment the row variable
+            row=$((row+1))
+
+        done 
+    fi
+
+    # Run the third R script with the rest of the clustering algorithms
+    Rscript 05_R_script_3.R $dir $i ${dir_analysis} $thres $row $pg $fm $fp $dp $tpg $tfm $tfp $tdp $tcx $upg $ufm $ufp $udp $ucx $out $norm --save
+
+done

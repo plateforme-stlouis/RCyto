@@ -1,0 +1,149 @@
+---
+title: "Algorithm benchmarking script"
+subtitle: "03_bench_02: FlowSOM"
+output:
+  html_document:
+    number_sections: yes
+    toc: yes
+    toc_float: yes
+    code_folding: hide
+    theme: united
+    highlight: tango
+author: Anna Guadall
+params:
+  clusters: "10"
+  threshold: ""
+  row: ""
+  norm: ""
+  id: ""
+---
+
+```{r setup, include=FALSE, cache = FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, cache = T)
+```
+
+```{r libraries, message=FALSE, cache = FALSE}
+library(FlowSOM)
+library(caret)
+library(cytofkit)
+```
+
+**Data: ``r params$id``**  
+**FlowSOM: `r params$clusters` clusters**  
+
+# Import data and functions
+```{r import rds objects, cache = F}
+ff <- readRDS(list.files(pattern = "ff"))
+matching <- readRDS(list.files(pattern = "matching"))
+mean_f1 <- readRDS(list.files(pattern = "mean_f1"))
+labels <- readRDS(list.files(pattern = "labels"))
+summ <- readRDS(list.files(pattern = "summary_table"))
+```
+
+```{r normalize, cache = F}
+normalize <- function(x) { return ((x - min(x)) / (max(x) - min(x))) }
+```
+
+```{r row, cache = F}
+row <- as.numeric(params$row)
+```
+
+# Parameters
+```{r clusters and labels}
+clusters <- as.numeric(params$clusters)
+threshold <- as.numeric(params$threshold)
+head(labels)
+length(labels)
+```
+Threshold: `r threshold`  
+Number of events: `r length(ff@exprs)`  
+Normalization: `r params$norm`
+
+# Descriptive
+```{r boxplot}
+boxplot(ff@exprs, las = 2)
+```
+
+# Clustering
+```{r flowsom clustering}
+# Parameters
+method <- "FlowSOM"
+
+# META-CLUSTERING
+set.seed(42)
+
+ptm <- proc.time() # measuring CPU time
+fs <- FlowSOM(ff, compensate = F,transform = F, scale = F,
+              colsToUse = colnames(ff@exprs), nClus = clusters, seed = 42)
+ptm <- proc.time() - ptm
+
+clustering <- fs$metaclustering[fs$FlowSOM$map$mapping[,1]] 
+```
+
+```{r save clustering, cache = F}
+saveRDS(clustering, paste("clustering_flowsom_", clusters, ".rds", sep = ""))
+```
+
+# Matching
+```{r flowsom matching}
+# MATCHING LABELS AND PREDICTIONS
+matched <- matching(clustering, labels, threshold) 
+```
+
+```{r save matching, cache = F}
+saveRDS(matched, paste("matched_flowsom_", clusters, ".rds", sep = ""))
+```
+
+# Confusion matrix
+```{r flowsom performance}
+# COMPUTING THE CONFUSION MATRIX AND OTHER PERFORMANCE MEASUREMENTS
+cm <- confusionMatrix(data = matched$clusters[labels != "outliers"],
+                      reference = labels[labels != "outliers"])
+cm_merged <- confusionMatrix(
+  data = matched$merged_clusters[matched$merged_labels != "outliers"],
+  reference = matched$merged_labels[matched$merged_labels != "outliers"]
+)
+
+# COMPUTE MEAN F1 and WEIGHTED MEAN F1
+mf1 <- mean_f1(cm, cm_merged, matched$merged_labels, matched$count_merged_pops)
+```
+
+```{r test 3}
+cm
+```
+
+```{r results, cache = FALSE}
+# Storing the result 
+summ[row, c(1,2,4)] <- c(params$id, params$norm, method)
+summ[row, -c(1,2,4)] <- c(nrow(ff@exprs), threshold, clusters, matched$partitions, 
+                          mf1$mf1, mf1$mf1_w, mf1$mf1_i_w, mf1$mf1_m, mf1$mf1_m_c, 
+                          NA, NA, ptm[1] + ptm[4], ptm[3])
+
+# FOR VISUALIZATION
+cat("\n", method, clusters, "clusters\n")
+cat("\nContingency matrix")
+print(matched$c)
+cat("\nF1 matrix")
+print(round(matched$f, 2))
+cat("\nConfusion matrix")
+print(cm$table)
+cat("\nConfusion matrix (MERGED)")
+print(cm_merged$table)
+```
+
+```{r save table, cache = F}
+saveRDS(summ, paste("summary_table_", clusters, ".rds", sep = ""))
+```
+
+```{r save labels, cache = F}
+#saveRDS(labels, paste("labels_", clusters, ".rds", sep = ""))
+```
+
+# Libraries
+```{r sessioninfo, cache = F}
+sessionInfo()
+```
+
+
+
+
