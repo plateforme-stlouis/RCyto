@@ -1,6 +1,6 @@
 ---
 title: "Algorithm benchmarking script"
-subtitle: "03_bench_02: FlowSOM"
+subtitle: "05_bench_02: FlowSOM"
 output:
   html_document:
     number_sections: yes
@@ -31,6 +31,11 @@ library(cytofkit)
 **Data: ``r params$id``**  
 **FlowSOM: `r params$clusters` clusters**  
 
+# Path
+```{r path}
+getwd()
+```
+
 # Import data and functions
 ```{r import rds objects, cache = F}
 ff <- readRDS(list.files(pattern = "ff"))
@@ -55,14 +60,10 @@ threshold <- as.numeric(params$threshold)
 head(labels)
 length(labels)
 ```
-Threshold: `r threshold`  
-Number of events: `r length(ff@exprs)`  
-Normalization: `r params$norm`
 
-# Descriptive
-```{r boxplot}
-boxplot(ff@exprs, las = 2)
-```
+**Threshold: `r threshold`**  
+**Number of events: `r length(ff@exprs)`**  
+**Normalization: `r params$norm`**
 
 # Clustering
 ```{r flowsom clustering}
@@ -135,11 +136,7 @@ print(cm_merged$table)
 saveRDS(summ, paste("summary_table_", clusters, ".rds", sep = ""))
 ```
 
-```{r save labels, cache = F}
-#saveRDS(labels, paste("labels_", clusters, ".rds", sep = ""))
-```
-
-# Libraries
+# Session info
 ```{r sessioninfo, cache = F}
 sessionInfo()
 ```

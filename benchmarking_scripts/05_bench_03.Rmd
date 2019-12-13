@@ -30,6 +30,8 @@ params:
   out: 1
   norm: ""
   id: ""
+  tsne: ""    # t-SNE
+  umap: ""    # UMAP
 ---
 
 ```{r setup, include=FALSE, cache = FALSE}
@@ -46,6 +48,16 @@ library(knitr)
 library(DepecheR)
 ```
 
+# Path
+```{r path}
+getwd()
+```
+
+# Parameters
+```{r params, cache = F}
+params
+```
+
 # Import data and functions
 ```{r import rds objects, cache = F}
 ff <- readRDS(list.files(pattern = "ff"))
@@ -57,8 +69,8 @@ n_pops <- readRDS(list.files(pattern = "n_pops"))
 ```
 
 **Data: ``r params$id``**    
-`r n_pops` populations.  
-NBormalization: `r params$norm`
+**`r n_pops` populations.**  
+**Normalization: `r params$norm`**
 
 ```{r normalize, cache = F}
 normalize <- function(x) { return ((x - min(x)) / (max(x) - min(x))) }
@@ -68,26 +80,14 @@ normalize <- function(x) { return ((x - min(x)) / (max(x) - min(x))) }
 row <- as.numeric(params$row)
 ```
 
-# Coloring
-```{r colors}
-coloring <-  c("darkgoldenrod1", "blue4", "blueviolet", "red", "turquoise", 
-               "burlywood3", "cadetblue", "chartreuse", "chartreuse4", "chocolate1",
-               "plum1", "cornflowerblue", "yellow", "cyan", "blue",
-               "darkgrey","khaki1", "deeppink1", "deeppink4", "black", "snow3")
-```
-
-# Descriptive
-```{r boxplot}
-boxplot(ff@exprs, las = 2)
-```
-
 # Reduction of dimensionality
 ## t-SNE dimensionality reduction
 Perform t-SNE if at least one t-SNE method is required:
-```{r decide tsne}
+```{r decide tsne, cache = F}
 do_tsne <- "n"
-if (params$tpg == "y" | params$tfm == "y" | params$tfp == "y" | params$tdp == "y" | params$tcx == "y") {
-  do_tsne <- "y" 
+if (params$tpg == "y" | params$tfm == "y" | params$tfp == "y" | params$tdp == "y" | params$tcx == "y"
+    | params$tsne == "y") {
+  (do_tsne <- "y") 
 } else {
   cat("t-SNE method has not been requested")
 }
@@ -103,24 +103,15 @@ if (do_tsne == "y") {
 }
 ```
 
-```{r tsne plot, fig.width = 12}
-if (do_tsne == "y"){
-  tsne_df <- cbind(as.data.frame(tsne_red), as.data.frame(labels))
-  
-  tsne_map <- cytof_clusterPlot(data = tsne_df, xlab = "tsne_1", ylab = "tsne_2", 
-                                    point_size = 0.5, labelRepel = F,
-                                    cluster = "labels", sampleLabel = FALSE, labelSize = 0, 
-                                    title = paste(params$id, " Labels"),
-                                    clusterColor = coloring[1:(n_pops + as.numeric(params$out))]) 
-}
-```
-
 ## UMAP dimensionality reduction
-```{r decide umap}
+```{r decide umap, cache = F}
 do_umap <- "n"
-if (params$upg == "y" | params$ufm == "y" | params$ufp == "y" | params$udp == "y" | params$ucx == "y") {
-  do_umap <- "y"
-} 
+if (params$upg == "y" | params$ufm == "y" | params$ufp == "y" | params$udp == "y" | params$ucx == "y"
+    | params$umap == "y") {
+  (do_umap <- "y")
+} else {
+  cat("UMAP method has not been requested")
+}
 ```
 
 ```{r umap}
@@ -133,17 +124,6 @@ if (do_umap == "y") {
 }
 ```
 
-```{r umap plot, fig.width = 12}
-if (do_umap == "y"){
-  umap_df <- cbind(as.data.frame(umap_red$layout), as.data.frame(labels))
-  umap_map <- cytof_clusterPlot(data = umap_df, xlab = "UMAP_1", ylab = "UMAP_2", 
-                                    point_size = 0.5, labelRepel = F,
-                                    cluster = "labels", sampleLabel = FALSE, labelSize = 0, 
-                                    title = paste(params$id, " Labels"),
-                                    clusterColor = coloring[1:(n_pops + as.numeric(params$out))])
-}
-```
-
 ## Export dimensionality reduction results
 ```{r save tsne result, cache = F}
 if (do_tsne == "y") {
@@ -152,7 +132,7 @@ if (do_tsne == "y") {
 ```
 
 ```{r save umap result, cache = F}
-if (do_tsne == "y") {
+if (do_umap == "y") {
   saveRDS(umap_red$layout, "umap_red.rds")
 }
 ```
@@ -1139,21 +1119,7 @@ if (params$ucx == "y"){
 }
 ```
 
-# Results
-```{r maps, cache = FALSE}
-tsne_map
-umap_map
-```
-
-```{r results, cache = FALSE}
-library(knitr)
-for(i in 8:16){
-  summ[,i] <- as.numeric(summ[,i])
-}
-
-kable(summ, digits = 3)
-```
-
+# Export results
 ```{r export results, cache = FALSE}
 # export results 
 write.table(summ, "summary.txt", append = T, sep = "\t", row.names = F, col.names = T)

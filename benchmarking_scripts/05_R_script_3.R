@@ -21,6 +21,8 @@ udp <- args[23]
 ucx <- args[24]
 out <- args[25]
 norm <- args[26]
+tsne <- args[27]
+umap <- args[28]
 
 # run clustering algorithms (other than FlowSOM)
 rmarkdown::render(
@@ -44,7 +46,9 @@ rmarkdown::render(
     ucx = ucx,
     out = out,
     norm = norm,
-    id = file_name
+    id = file_name,
+    tsne = tsne,
+    umap = umap
   ),
   output_file = file.path(dir_name, file_name, dir_analysis, "05_bench_03.html"),
   intermediates_dir = file.path(dir_name, file_name, dir_analysis),

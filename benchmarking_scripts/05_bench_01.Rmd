@@ -1,6 +1,6 @@
 ---
 title: "Algorithm benchmarking script"
-subtitle: "03_bench_01"
+subtitle: "05_bench_01"
 output:
   html_document:
     number_sections: yes
@@ -32,6 +32,11 @@ library(knitr)
 library(flowCore)
 ```
 
+# Path
+```{r path}
+getwd()
+```
+
 # Parameters
 ```{r params}
 params
@@ -57,20 +62,6 @@ n_pops <- length(levels(labels)) - as.numeric(params$outliers)
 colnames(ff@exprs)
 ```
 
-```{r head}
-head(ff@exprs)
-```
-
-```{r boxplot}
-summary(ff@exprs)
-par(cex.axis = 0.5)
-boxplot(ff@exprs, las = 2)
-```
-
-```{r dotplot}
-plot(ff@exprs[,1], ff@exprs[,2])
-```
-
 ```{r pops, cache = FALSE}
 # save the number of populations
 saveRDS(n_pops, "n_pops.rds")
@@ -79,7 +70,7 @@ saveRDS(n_pops, "n_pops.rds")
 ```{r freqs}
 # Computing  populations' frequencies
 ref_pops_freq <- (prop.table(table(labels)))*100
-table_frqs <- cbind(count(labels), round(ref_pops_freq, 2))
+table_frqs <- cbind(as.data.frame(table(labels)), round(ref_pops_freq, 2))
 table_frqs <- table_frqs[,c(1:2,4)]
 colnames(table_frqs) <- c("Labels", "Counts", "Frequencies")
 ```
@@ -91,10 +82,6 @@ File: ``r params$id``
 `r ncol(ff@exprs)` parameters.  
 Normalization: `r params$norm`  
 
-```{r table freqs}
-kable(table_frqs)
-```
-
 ```{r export freqs, cache = F}
 saveRDS(table_frqs, "frequencies.rds")
 ```
@@ -104,8 +91,8 @@ saveRDS(table_frqs, "frequencies.rds")
 if (params$norm == "y"){
   data_norm <- apply(ff@exprs, 2, normalize)
   summary(data_norm)
-  par(cex.axis = 0.5)
-  boxplot(data_norm, las = 2)
+  #par(cex.axis = 0.5)
+  #boxplot(data_norm, las = 2)
   ff <- new("flowFrame", exprs = as.matrix(data_norm))
 } else {
   cat("Normalization of data has not been requested")
@@ -131,7 +118,7 @@ summ <- data.frame(File = NA, Norm = NA, n = 0, Method = NA, Threshold = 0,
 saveRDS(summ, "summary_table.rds")
 ```
 
-# Libraries
+# Session info
 ```{r sessioninfo, cache = F}
 sessionInfo()
 ```

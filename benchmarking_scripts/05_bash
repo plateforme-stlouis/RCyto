@@ -3,14 +3,14 @@
 ### Define the parameters ###############################################
 
 # Directory with the samples to be analyzed
-dir="semi_11_150"
+dir="per_alumni_real_03_umap"
 
 # Name of the label list to be used
 labs="labels"
 
 # Do the samples have OUTLIERS? (0: no outiliers, 1: outliers)
 # Real data has outliers, synthetic and semi-synthetic data do not
-out=0
+out=1
 
 # Indicate the number of clusters to be tested with FowSOM
 # between comas, i.g. "5,10,20" 
@@ -21,23 +21,32 @@ thres=0.05
 
 ##########################################################################
 
+### Indicate the dimensionality reduction methods to used ################
+
+# Indicate "y" or "n"
+
+t="n"      # tsne
+u="y"      # umap
+
+##########################################################################
+
 ### Specify the methods to be compared ###################################
 
 # Indicate "y" or "n"
 
-fs="y"      # flowSOM
-pg="y"      # phenograph
+fs="n"      # flowSOM
+pg="n"      # phenograph
 fm="n"      # flowMeans
 fp="n"      # flowPeaks
 dp="n"      # DEPECHE
 tpg="n"     # t-SNE + phenograph
 tfm="n"     # t-SNE + flowMeans
-tfp="y"     # t-SNE + flowPeaks
+tfp="n"     # t-SNE + flowPeaks
 tdp="n"     # t-SNE + DEPECHE
 tcx="n"     # t-SNE + ClusterX
 upg="n"     # UMAP + phenograph
 ufm="n"     # UMAP + flowMeans
-ufp="y"     # UMAP + flowPeaks
+ufp="n"     # UMAP + flowPeaks
 udp="n"     # UMAP + DEPECHE
 ucx="n"     # UMAP + ClusterX
 
@@ -124,6 +133,19 @@ do
     fi
 
     # Run the third R script with the rest of the clustering algorithms
-    Rscript 05_R_script_3.R $dir $i ${dir_analysis} $thres $row $pg $fm $fp $dp $tpg $tfm $tfp $tdp $tcx $upg $ufm $ufp $udp $ucx $out $norm --save
+    Rscript 05_R_script_3.R $dir $i ${dir_analysis} $thres $row $pg $fm $fp $dp $tpg $tfm $tfp $tdp $tcx $upg $ufm $ufp $udp $ucx $out $norm $t $u --save
 
+    # Copy the elements that will be used by the last R script (coz they will be erased)
+    cd ${dir}/${i}/${dir_analysis}
+    cp ff.rds ff_copy.rds
+    cp frequencies.rds frequencies_copy.rds
+    cp *labels.rds labels_copy.rds
+    cp n_pops.rds n_pops_copy.rds
+    cp tsne_red.rds tsne_red_copy.rds
+    cp umap_red.rds umap_red_copy.rds
+    cp summary.txt summary_copy.txt
+    cd ../../..
+
+    # Run the last R script to produce the final repport
+    Rscript 05_R_script_4.R $dir $i ${dir_analysis} $out $norm $t $u --save
 done
